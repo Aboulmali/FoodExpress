@@ -1,0 +1,149 @@
+version: '3.8'
+
+services:
+  # ============ BASES DE DONNÉES ============
+  postgres-restaurant:
+    image: postgres:16
+    container_name: postgres-restaurant
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: RestaurantDb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_restaurant_data:/var/lib/postgresql/data
+    networks:
+      - foodexpress-network
+
+  postgres-order:
+    image: postgres:16
+    container_name: postgres-order
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: OrderDb
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg_order_data:/var/lib/postgresql/data
+    networks:
+      - foodexpress-network
+
+  postgres-user:
+    image: postgres:16
+    container_name: postgres-user
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: admin123
+      POSTGRES_DB: UserDb
+    ports:
+      - "5434:5432"
+    volumes:
+      - pg_user_data:/var/lib/postgresql/data
+    networks:
+      - foodexpress-network
+
+  postgres-dw:
+    image: postgres:16
+    container_name: postgres-dw
+    environment:
+      POSTGRES_USER: dw_admin
+      POSTGRES_PASSWORD: dw_admin123
+      POSTGRES_DB: DataWarehouse
+    ports:
+      - "5435:5432"
+    volumes:
+      - pg_dw_data:/var/lib/postgresql/data
+    networks:
+      - foodexpress-network
+
+  # ============ CACHE ============
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+    networks:
+      - foodexpress-network
+
+  # ============ STOCKAGE (MinIO) ============
+  minio:
+    image: minio/minio
+    container_name: minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+    networks:
+      - foodexpress-network
+
+  # ============ AUTH (Keycloak) ============
+  keycloak:
+    image: quay.io/keycloak/keycloak:24.0
+    container_name: keycloak
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin123
+    ports:
+      - "8080:8080"
+    networks:
+      - foodexpress-network
+
+  # ============ MESSAGING (RabbitMQ) ============
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: admin
+      RABBITMQ_DEFAULT_PASS: admin123
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - foodexpress-network
+
+  # ============ LOGGING (ELK) ============
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+    networks:
+      - foodexpress-network
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+    networks:
+      - foodexpress-network
+
+volumes:
+  pg_restaurant_data:
+  pg_order_data:
+  pg_user_data:
+  pg_dw_data:
+  minio_data:
+  es_data:
+
+networks:
+  foodexpress-network:
+    driver: bridge

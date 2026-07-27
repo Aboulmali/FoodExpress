@@ -1,0 +1,18 @@
+<Solution>
+  <Folder Name="/src/" />
+  <Folder Name="/src/ApiGateway/">
+    <Project Path="FoodExpress.Gateway/FoodExpress.Gateway.csproj" />
+  </Folder>
+  <Folder Name="/src/BuildingBlocks/">
+    <Project Path="FoodExpress.Common/FoodExpress.Common.csproj" />
+    <Project Path="FoodExpress.EventBus/FoodExpress.EventBus.csproj" />
+  </Folder>
+  <Folder Name="/src/Services/">
+    <Project Path="FoodExpress.Order.API/FoodExpress.Order.API.csproj" />
+    <Project Path="FoodExpress.Restaurant.API/FoodExpress.Restaurant.API.csproj" />
+    <Project Path="FoodExpress.User.API/FoodExpress.User.API.csproj" />
+  </Folder>
+  <Folder Name="/src/Workers/">
+    <Project Path="FoodExpress.DW.Worker/FoodExpress.DW.Worker.csproj" />
+  </Folder>
+</Solution>
