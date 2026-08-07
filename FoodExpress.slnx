@@ -15,6 +15,9 @@
   <Folder Name="/src/Workers/">
     <Project Path="FoodExpress.DW.Worker/FoodExpress.DW.Worker.csproj" />
   </Folder>
+  <Folder Name="/tests/">
+    <Project Path="FoodExpress.Tests/FoodExpress.Tests.csproj" />
+  </Folder>
   <Folder Name="/Éléments de solution/">
     <File Path=".gitignore" />
     <File Path="docker-compose.yml" />

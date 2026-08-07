@@ -189,7 +189,14 @@ public class OrderService : IOrderService
             OrderId = order.Id,
             CustomerId = order.CustomerId,
             PreviousStatus = previousStatus.ToString(),
-            NewStatus = dto.NewStatus.ToString()
+            NewStatus = dto.NewStatus.ToString(),
+            Items = order.Items.Select(i => new OrderItemInfo
+            {
+                DishId = i.DishId,
+                DishName = i.DishName,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice
+            }).ToList()
         });
 
         // Si livré, publier OrderDelivered
@@ -247,7 +254,9 @@ public class OrderService : IOrderService
 
     public async Task<bool> CancelAsync(Guid id, string reason)
     {
-        var order = await _db.Orders.FindAsync(id);
+        var order = await _db.Orders
+            .Include(o => o.Items)
+            .FirstOrDefaultAsync(o => o.Id == id);
         if (order == null) return false;
 
         if (order.Status == OrderStatus.Delivered)
@@ -264,7 +273,14 @@ public class OrderService : IOrderService
             OrderId = order.Id,
             CustomerId = order.CustomerId,
             PreviousStatus = "Any",
-            NewStatus = OrderStatus.Cancelled.ToString()
+            NewStatus = OrderStatus.Cancelled.ToString(),
+            Items = order.Items.Select(i => new OrderItemInfo
+            {
+                DishId = i.DishId,
+                DishName = i.DishName,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice
+            }).ToList()
         });
 
         return true;

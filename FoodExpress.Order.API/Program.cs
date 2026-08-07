@@ -1,13 +1,36 @@
+using FoodExpress.Common.HealthChecks;
 using FoodExpress.EventBus;
 using FoodExpress.EventBus.Abstractions;
 using FoodExpress.Order.API.Data;
 using FoodExpress.Order.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Serilog;
+using Serilog.Sinks.Elasticsearch;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ==================== Serilog + Elasticsearch ====================
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("Service", "OrderService")
+    .WriteTo.Console()
+    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+    {
+        AutoRegisterTemplate = true,
+        IndexFormat = $"foodexpress-logs-{DateTime.UtcNow:yyyy-MM}",
+        NumberOfShards = 1,
+        NumberOfReplicas = 0,
+        TypeName = null
+    })
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // ==================== PostgreSQL + EF Core ====================
 builder.Services.AddDbContext<OrderDbContext>(options =>
@@ -27,11 +50,21 @@ builder.Services.AddSingleton<IEventBus>(sp =>
         builder.Configuration["RabbitMQ:HostName"]!,
         builder.Configuration["RabbitMQ:UserName"]!,
         builder.Configuration["RabbitMQ:Password"]!,
+        sp,
         logger);
 });
 
 // ==================== Services métier ====================
 builder.Services.AddScoped<IOrderService, OrderService>();
+
+// ==================== Health Checks ====================
+builder.Services.AddHealthChecks()
+    .AddCheck("PostgreSQL", new PostgresHealthCheck(builder.Configuration.GetConnectionString("OrderDb")!), tags: new[] { "database" })
+    .AddCheck("RabbitMQ", new RabbitMqHealthCheck(
+        builder.Configuration["RabbitMQ:HostName"]!,
+        builder.Configuration["RabbitMQ:UserName"]!,
+        builder.Configuration["RabbitMQ:Password"]!), tags: new[] { "queue" })
+    .AddCheck("Elasticsearch", new ElasticsearchHealthCheck("http://localhost:9200"), tags: new[] { "logs" });
 
 // ==================== JWT (Keycloak) ====================
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -106,4 +139,9 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = HealthCheckJsonWriter.WriteAsync
+});
+app.UseSerilogRequestLogging();
 app.Run();

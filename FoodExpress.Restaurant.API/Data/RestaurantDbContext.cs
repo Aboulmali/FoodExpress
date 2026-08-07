@@ -12,6 +12,7 @@ public class RestaurantDbContext : DbContext
     public DbSet<Models.Entities.Restaurant> Restaurants { get; set; }
     public DbSet<Category> Categories { get; set; }
     public DbSet<Dish> Dishes { get; set; }
+    public DbSet<ProcessedMessage> ProcessedMessages { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,14 @@ public class RestaurantDbContext : DbContext
             entity.Property(d => d.Description).HasMaxLength(1000);
             entity.Property(d => d.Price).HasColumnType("decimal(10,2)");
             entity.Property(d => d.ImageUrl).HasMaxLength(500);
+        });
+
+        // ===== ProcessedMessage (idempotence) =====
+        modelBuilder.Entity<ProcessedMessage>(entity =>
+        {
+            entity.HasKey(p => p.Id);
+            entity.Property(p => p.EventType).IsRequired().HasMaxLength(150);
+            entity.HasIndex(p => p.Id).IsUnique();
         });
 
         // ===== Seed Data (catégories par défaut) =====

@@ -8,6 +8,7 @@ public class Dish
     public decimal Price { get; set; }
     public string? ImageUrl { get; set; }
 
+    public int Stock { get; set; } = 100;
     public bool IsAvailable { get; set; } = true;
     public bool IsVegetarian { get; set; }
     public bool IsSpicy { get; set; }

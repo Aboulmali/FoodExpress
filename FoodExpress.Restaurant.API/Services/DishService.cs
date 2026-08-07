@@ -62,6 +62,7 @@ public class DishService : IDishService
             Name = dto.Name,
             Description = dto.Description,
             Price = dto.Price,
+            Stock = dto.Stock,
             IsVegetarian = dto.IsVegetarian,
             IsSpicy = dto.IsSpicy,
             PreparationTimeMinutes = dto.PreparationTimeMinutes,
@@ -86,6 +87,7 @@ public class DishService : IDishService
         dish.Name = dto.Name;
         dish.Description = dto.Description;
         dish.Price = dto.Price;
+        dish.Stock = dto.Stock;
         dish.IsAvailable = dto.IsAvailable;
         dish.IsVegetarian = dto.IsVegetarian;
         dish.IsSpicy = dto.IsSpicy;
@@ -139,6 +141,7 @@ public class DishService : IDishService
         Description = d.Description,
         Price = d.Price,
         ImageUrl = d.ImageUrl,
+        Stock = d.Stock,
         IsAvailable = d.IsAvailable,
         IsVegetarian = d.IsVegetarian,
         IsSpicy = d.IsSpicy,

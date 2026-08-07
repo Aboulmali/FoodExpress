@@ -1,11 +1,34 @@
+using FoodExpress.Common.HealthChecks;
 using FoodExpress.User.API.Data;
 using FoodExpress.User.API.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
+using Serilog;
+using Serilog.Sinks.Elasticsearch;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ==================== Serilog + Elasticsearch ====================
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("Service", "UserService")
+    .WriteTo.Console()
+    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+    {
+        AutoRegisterTemplate = true,
+        IndexFormat = $"foodexpress-logs-{DateTime.UtcNow:yyyy-MM}",
+        NumberOfShards = 1,
+        NumberOfReplicas = 0,
+        TypeName = null
+    })
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // ==================== Services ====================
 
@@ -18,6 +41,11 @@ builder.Services.AddHttpClient<IKeycloakService, KeycloakService>();
 
 // Service métier
 builder.Services.AddScoped<IUserService, UserService>();
+
+// ==================== Health Checks ====================
+builder.Services.AddHealthChecks()
+    .AddCheck("PostgreSQL", new PostgresHealthCheck(builder.Configuration.GetConnectionString("UserDb")!), tags: new[] { "database" })
+    .AddCheck("Elasticsearch", new ElasticsearchHealthCheck("http://localhost:9200"), tags: new[] { "logs" });
 
 // ==================== Authentification JWT (Keycloak) ====================
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -104,5 +132,10 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHealthChecks("/health", new HealthCheckOptions
+{
+    ResponseWriter = HealthCheckJsonWriter.WriteAsync
+});
+app.UseSerilogRequestLogging();
 
 app.Run();

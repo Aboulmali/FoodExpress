@@ -7,6 +7,7 @@ public class DishDto
     public string Description { get; set; } = string.Empty;
     public decimal Price { get; set; }
     public string? ImageUrl { get; set; }
+    public int Stock { get; set; }
     public bool IsAvailable { get; set; }
     public bool IsVegetarian { get; set; }
     public bool IsSpicy { get; set; }
@@ -22,6 +23,7 @@ public class CreateDishDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public int Stock { get; set; } = 100;
     public bool IsVegetarian { get; set; }
     public bool IsSpicy { get; set; }
     public int PreparationTimeMinutes { get; set; } = 20;
@@ -34,6 +36,7 @@ public class UpdateDishDto
     public string Name { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public int Stock { get; set; }
     public bool IsAvailable { get; set; }
     public bool IsVegetarian { get; set; }
     public bool IsSpicy { get; set; }

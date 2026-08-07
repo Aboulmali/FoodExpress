@@ -1,9 +1,32 @@
+using FoodExpress.Common.HealthChecks;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.IdentityModel.Tokens;
+using Serilog;
+using Serilog.Sinks.Elasticsearch;
 using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ==================== Serilog + Elasticsearch ====================
+Log.Logger = new LoggerConfiguration()
+    .Enrich.FromLogContext()
+    .Enrich.WithMachineName()
+    .Enrich.WithEnvironmentName()
+    .Enrich.WithProperty("Service", "Gateway")
+    .WriteTo.Console()
+    .WriteTo.Elasticsearch(new ElasticsearchSinkOptions(new Uri("http://localhost:9200"))
+    {
+        AutoRegisterTemplate = true,
+        IndexFormat = $"foodexpress-logs-{DateTime.UtcNow:yyyy-MM}",
+        NumberOfShards = 1,
+        NumberOfReplicas = 0,
+        TypeName = null
+    })
+    .CreateLogger();
+
+builder.Host.UseSerilog();
 
 // ==================== YARP Reverse Proxy ====================
 builder.Services.AddReverseProxy()
@@ -57,6 +80,14 @@ builder.Services.AddRateLimiter(options =>
     options.RejectionStatusCode = 429; // Too Many Requests
 });
 
+// ==================== Health Checks (agrégation) ====================
+builder.Services.AddHealthChecks()
+    .AddCheck("RestaurantService", new HttpTargetHealthCheck("http://localhost:5001/health"), tags: new[] { "backend" })
+    .AddCheck("OrderService", new HttpTargetHealthCheck("http://localhost:5002/health"), tags: new[] { "backend" })
+    .AddCheck("UserService", new HttpTargetHealthCheck("http://localhost:5003/health"), tags: new[] { "backend" })
+    .AddCheck("Keycloak", new HttpTargetHealthCheck("http://localhost:8080/realms/foodexpress/.well-known/openid-configuration"), tags: new[] { "identity" })
+    .AddCheck("Elasticsearch", new ElasticsearchHealthCheck("http://localhost:9200"), tags: new[] { "logs" });
+
 var app = builder.Build();
 
 // ==================== Pipeline HTTP ====================
@@ -79,14 +110,23 @@ app.MapGet("/", () => Results.Ok(new
     }
 }));
 
-// Endpoint de santé
+// Endpoint de santé (liveness) : vit resp. /health = readiness agrégé
 app.MapGet("/health", () => Results.Ok(new
 {
     status = "healthy",
-    timestamp = DateTime.UtcNow
+    service = "FoodExpress API Gateway",
+    checks = new[] { "RestaurantService", "OrderService", "UserService", "Keycloak", "Elasticsearch" },
+    details = "/health/ready"
 }));
+
+// Endpoint de readiness : exécute les health checks du Gateway
+app.MapHealthChecks("/health/ready", new HealthCheckOptions
+{
+    ResponseWriter = HealthCheckJsonWriter.WriteAsync
+});
 
 // Routes YARP (proxy vers les microservices)
 app.MapReverseProxy();
+app.UseSerilogRequestLogging();
 
 app.Run();
