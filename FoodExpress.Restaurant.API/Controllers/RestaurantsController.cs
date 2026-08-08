@@ -17,6 +17,17 @@ public class RestaurantsController : ControllerBase
         _service = service;
     }
 
+    // L'identité du propriétaire vient TOUJOURS du token JWT (claim "sub"),
+    // jamais du corps de la requête — interdit l'usurpation d'identité.
+    private Guid? CurrentOwnerId
+    {
+        get
+        {
+            var sub = User.FindFirst("sub")?.Value ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(sub, out var id) ? id : null;
+        }
+    }
+
     /// <summary>Récupérer tous les restaurants (avec cache Redis)</summary>
     [HttpGet]
     public async Task<IActionResult> GetAll()
@@ -38,26 +49,52 @@ public class RestaurantsController : ControllerBase
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateRestaurantDto dto)
     {
-        var restaurant = await _service.CreateAsync(dto);
+        var ownerId = CurrentOwnerId;
+        if (ownerId == null)
+            return Unauthorized(new { message = "Token invalide" });
+
+        var restaurant = await _service.CreateAsync(dto, ownerId.Value);
         return CreatedAtAction(nameof(GetById), new { id = restaurant.Id }, restaurant);
     }
 
-    /// <summary>Mettre à jour un restaurant</summary>
+    /// <summary>Mettre à jour un restaurant (propriétaire uniquement)</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRestaurantDto dto)
     {
-        var restaurant = await _service.UpdateAsync(id, dto);
-        return restaurant == null ? NotFound() : Ok(restaurant);
+        var ownerId = CurrentOwnerId;
+        if (ownerId == null)
+            return Unauthorized(new { message = "Token invalide" });
+
+        try
+        {
+            var restaurant = await _service.UpdateAsync(id, dto, ownerId.Value);
+            return restaurant == null ? NotFound() : Ok(restaurant);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
     }
 
-    /// <summary>Supprimer un restaurant</summary>
+    /// <summary>Supprimer un restaurant (propriétaire uniquement)</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var deleted = await _service.DeleteAsync(id);
-        return deleted ? NoContent() : NotFound();
+        var ownerId = CurrentOwnerId;
+        if (ownerId == null)
+            return Unauthorized(new { message = "Token invalide" });
+
+        try
+        {
+            var deleted = await _service.DeleteAsync(id, ownerId.Value);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
     }
 
     /// <summary>Uploader le logo d'un restaurant</summary>

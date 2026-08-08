@@ -55,11 +55,20 @@ public class OrdersController : ControllerBase
         return Ok(orders);
     }
 
-    /// <summary>Récupérer les commandes d'un client</summary>
+    /// <summary>Récupérer les commandes d'un client (le client concerné ou un Admin)</summary>
     [HttpGet("customer/{customerId:guid}")]
     [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> GetByCustomer(Guid customerId)
     {
+        // Un client ne peut consulter QUE ses propres commandes (claim "sub" du JWT).
+        if (!User.IsInRole("Admin"))
+        {
+            var sub = User.FindFirst("sub")?.Value
+                      ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sub, out var currentId) || currentId != customerId)
+                return Forbid(); // 403 : ce ne sont pas vos commandes
+        }
+
         var orders = await _service.GetByCustomerAsync(customerId);
         return Ok(orders);
     }

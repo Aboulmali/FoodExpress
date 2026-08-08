@@ -68,18 +68,19 @@ public class UserServiceTests
     }
 
     [Fact]
-    public async Task Register_WithOwnerRole_AssignsAndPersistsIt()
+    public async Task Register_ForcesCustomerRole_IgnoringRequestedRole()
     {
         var db = CreateDb("RegisterOwnerRole");
         _keycloak.Setup(k => k.CreateUserAsync(It.IsAny<RegisterUserDto>())).ReturnsAsync("k456");
 
         var dto = SampleDto();
-        dto.Role = UserRole.RestaurantOwner;
+        dto.Role = UserRole.RestaurantOwner; // tentative d'élévation de privilège
 
         var service = new UserService(db, _keycloak.Object, _logger.Object);
         var result = await service.RegisterAsync(dto);
 
-        Assert.Equal(UserRole.RestaurantOwner, result.Role);
+        // La sécurité force le rôle Client : l'utilisateur ne peut pas s'auto-proclamer Owner/Admin
+        Assert.Equal(UserRole.Customer, result.Role);
     }
 
     [Fact]

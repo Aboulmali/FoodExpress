@@ -6,8 +6,8 @@ public interface IRestaurantService
 {
     Task<List<RestaurantDto>> GetAllAsync();
     Task<RestaurantDto?> GetByIdAsync(Guid id);
-    Task<RestaurantDto> CreateAsync(CreateRestaurantDto dto);
-    Task<RestaurantDto?> UpdateAsync(Guid id, UpdateRestaurantDto dto);
-    Task<bool> DeleteAsync(Guid id);
+    Task<RestaurantDto> CreateAsync(CreateRestaurantDto dto, Guid ownerId);
+    Task<RestaurantDto?> UpdateAsync(Guid id, UpdateRestaurantDto dto, Guid ownerId);
+    Task<bool> DeleteAsync(Guid id, Guid ownerId);
     Task<string?> UploadLogoAsync(Guid id, IFormFile file);
 }

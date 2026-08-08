@@ -79,14 +79,30 @@ public class RestaurantServiceTests
         {
             Name = "Pizzeria 2000",
             Address = "45 rue X",
-            City = "Casablanca",
-            OwnerId = ownerId
-        });
+            City = "Casablanca"
+        }, ownerId);
 
         Assert.Equal("Pizzeria 2000", created.Name);
         Assert.Equal(ownerId, db.Restaurants.Single().OwnerId);
         Assert.Equal(1, db.Restaurants.Count());
         _cache.Verify(c => c.RemoveAsync("restaurants:all"), Times.Once);
+    }
+
+    [Fact]
+    public async Task Create_IgnorOwnerIdFromBody()
+    {
+        var db = CreateDb(nameof(Create_IgnorOwnerIdFromBody));
+        var ownerId = Guid.NewGuid();
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+        var created = await service.CreateAsync(new CreateRestaurantDto
+        {
+            Name = "Proprio JWT",
+            Address = "10 rue Y",
+            City = "Casablanca"
+        }, ownerId);
+
+        Assert.Equal(ownerId, db.Restaurants.Single().OwnerId);
     }
 
     [Fact]
@@ -106,9 +122,24 @@ public class RestaurantServiceTests
         var db = CreateDb(nameof(Update_NotFound_ReturnsNull));
         var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
 
-        var result = await service.UpdateAsync(Guid.NewGuid(), new UpdateRestaurantDto());
+        var result = await service.UpdateAsync(Guid.NewGuid(), new UpdateRestaurantDto(), Guid.NewGuid());
 
         Assert.Null(result);
+    }
+
+    [Fact]
+    public async Task Update_NotOwner_Throws()
+    {
+        var db = CreateDb(nameof(Update_NotOwner_Throws));
+        var id = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "Mon resto", Address = "a", City = "c", OwnerId = ownerId });
+        await db.SaveChangesAsync();
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.UpdateAsync(id, new UpdateRestaurantDto { Name = "Hijacked" }, Guid.NewGuid()));
     }
 
     [Fact]
@@ -116,11 +147,12 @@ public class RestaurantServiceTests
     {
         var db = CreateDb(nameof(Update_Existing_AppliesChangesAndInvalidatesCache));
         var id = Guid.NewGuid();
-        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "Old", Address = "a", City = "c", Email = "" });
+        var ownerId = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "Old", Address = "a", City = "c", Email = "", OwnerId = ownerId });
         await db.SaveChangesAsync();
 
         var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
-        var result = await service.UpdateAsync(id, new UpdateRestaurantDto { Name = "New", Address = "b", City = "c", IsOpen = false });
+        var result = await service.UpdateAsync(id, new UpdateRestaurantDto { Name = "New", Address = "b", City = "c", IsOpen = false }, ownerId);
 
         Assert.NotNull(result);
         Assert.Equal("New", result.Name);
@@ -135,9 +167,23 @@ public class RestaurantServiceTests
         var db = CreateDb(nameof(Delete_NotFound_ReturnsFalse));
         var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
 
-        var result = await service.DeleteAsync(Guid.NewGuid());
+        var result = await service.DeleteAsync(Guid.NewGuid(), Guid.NewGuid());
 
         Assert.False(result);
+    }
+
+    [Fact]
+    public async Task Delete_NotOwner_Throws()
+    {
+        var db = CreateDb(nameof(Delete_NotOwner_Throws));
+        var id = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "Mon resto", Address = "a", City = "c", OwnerId = Guid.NewGuid() });
+        await db.SaveChangesAsync();
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.DeleteAsync(id, Guid.NewGuid()));
     }
 
     [Fact]
@@ -145,11 +191,12 @@ public class RestaurantServiceTests
     {
         var db = CreateDb(nameof(Delete_Existing_RemovesAndInvalidates));
         var id = Guid.NewGuid();
-        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "To Delete", Address = "a", City = "c" });
+        var ownerId = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "To Delete", Address = "a", City = "c", OwnerId = ownerId });
         await db.SaveChangesAsync();
 
         var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
-        var result = await service.DeleteAsync(id);
+        var result = await service.DeleteAsync(id, ownerId);
 
         Assert.True(result);
         Assert.Empty(db.Restaurants);

@@ -33,7 +33,6 @@ public class CreateRestaurantDto
     public double Longitude { get; set; }
     public string OpeningTime { get; set; } = "09:00";
     public string ClosingTime { get; set; } = "23:00";
-    public Guid OwnerId { get; set; }
 }
 
 public class UpdateRestaurantDto

@@ -70,7 +70,7 @@ public class RestaurantService : IRestaurantService
         return dto;
     }
 
-    public async Task<RestaurantDto> CreateAsync(CreateRestaurantDto dto)
+    public async Task<RestaurantDto> CreateAsync(CreateRestaurantDto dto, Guid ownerId)
     {
         var restaurant = new Models.Entities.Restaurant
         {
@@ -85,7 +85,7 @@ public class RestaurantService : IRestaurantService
             Longitude = dto.Longitude,
             OpeningTime = dto.OpeningTime,
             ClosingTime = dto.ClosingTime,
-            OwnerId = dto.OwnerId
+            OwnerId = ownerId
         };
 
         _db.Restaurants.Add(restaurant);
@@ -98,10 +98,12 @@ public class RestaurantService : IRestaurantService
         return MapToDto(restaurant);
     }
 
-    public async Task<RestaurantDto?> UpdateAsync(Guid id, UpdateRestaurantDto dto)
+    public async Task<RestaurantDto?> UpdateAsync(Guid id, UpdateRestaurantDto dto, Guid ownerId)
     {
         var restaurant = await _db.Restaurants.FindAsync(id);
         if (restaurant == null) return null;
+        if (restaurant.OwnerId != ownerId)
+            throw new UnauthorizedAccessException("Vous ne pouvez modifier que vos propres restaurants.");
 
         restaurant.Name = dto.Name;
         restaurant.Description = dto.Description;
@@ -122,10 +124,12 @@ public class RestaurantService : IRestaurantService
         return MapToDto(restaurant);
     }
 
-    public async Task<bool> DeleteAsync(Guid id)
+    public async Task<bool> DeleteAsync(Guid id, Guid ownerId)
     {
         var restaurant = await _db.Restaurants.FindAsync(id);
         if (restaurant == null) return false;
+        if (restaurant.OwnerId != ownerId)
+            throw new UnauthorizedAccessException("Vous ne pouvez supprimer que vos propres restaurants.");
 
         _db.Restaurants.Remove(restaurant);
         await _db.SaveChangesAsync();

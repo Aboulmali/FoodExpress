@@ -23,6 +23,10 @@ public class UserService : IUserService
         if (await _db.Users.AnyAsync(u => u.Email == dto.Email))
             throw new InvalidOperationException("Un utilisateur avec cet email existe déjà.");
 
+        // Sécurité : l'inscription publique ne permet QUE le rôle Client.
+        // Les rôles RestaurantOwner/Admin/Deliverer sont attribués par un admin (jamais via le body).
+        dto.Role = UserRole.Customer;
+
         // 1. Créer dans Keycloak
         var keycloakId = await _keycloak.CreateUserAsync(dto);
 
