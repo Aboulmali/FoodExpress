@@ -21,6 +21,7 @@ public static class Policies
     public const string CustomerOnly = "CustomerOnly";
     public const string CustomerOrAdmin = "CustomerOrAdmin";
     public const string RestaurantAdmin = "RestaurantAdmin";
+    public const string DeliveryOrAdmin = "DeliveryOrAdmin";
 }
 
 public static class FoodExpressAuthExtensions
@@ -55,6 +56,7 @@ public static class FoodExpressAuthExtensions
             options.AddPolicy(Policies.CustomerOnly, p => p.RequireRole(Roles.Customer));
             options.AddPolicy(Policies.CustomerOrAdmin, p => p.RequireRole(Roles.Customer, Roles.Admin));
             options.AddPolicy(Policies.RestaurantAdmin, p => p.RequireRole(Roles.RestaurantOwner, Roles.Admin));
+            options.AddPolicy(Policies.DeliveryOrAdmin, p => p.RequireRole(Roles.DeliveryPerson, Roles.Admin));
         });
 
         return services;
