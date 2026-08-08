@@ -409,6 +409,28 @@
   "webAuthnPolicyPasswordlessAcceptableAaguids" : [ ],
   "webAuthnPolicyPasswordlessExtraOrigins" : [ ],
   "users" : [ {
+    "id" : "c32ee5b9-74a5-4159-8b92-bca8c2aa49dd",
+    "username" : "admin.demo@test.com",
+    "firstName" : "Admin",
+    "lastName" : "Demo",
+    "email" : "admin.demo@test.com",
+    "emailVerified" : true,
+    "createdTimestamp" : 1786162024792,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "986a2e74-5d36-4221-bee4-642ffc7d90c0",
+      "type" : "password",
+      "createdDate" : 1786162037826,
+      "secretData" : "{\"value\":\"BcDb93dHpN/bVBIhRsadY+mlcXPE3jVXydaOD3Ba4UXhaYZFGaa3vWkAt3Q17yrGf6z5Iw272rKp47dQcAd/wA==\",\"salt\":\"Q6AFILrG71T483G3xGfyWg==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":210000,\"algorithm\":\"pbkdf2-sha512\",\"additionalParameters\":{}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "Admin", "default-roles-foodexpress" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
     "id" : "afd08f7f-43e8-4971-8ac8-bb8160ca3b74",
     "username" : "ahmed.test",
     "firstName" : "Ahmed",
