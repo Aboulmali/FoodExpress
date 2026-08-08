@@ -6,6 +6,8 @@ public interface IUserService
 {
     Task<UserDto> RegisterAsync(RegisterUserDto dto);
     Task<TokenResponseDto> LoginAsync(LoginDto dto);
+    Task<TokenResponseDto> RefreshAsync(string refreshToken);
+    Task LogoutAsync(string refreshToken);
     Task<UserDto?> GetByIdAsync(Guid id);
     Task<UserDto?> GetByEmailAsync(string email);
     Task<List<UserDto>> GetAllAsync();

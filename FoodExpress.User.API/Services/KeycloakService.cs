@@ -141,4 +141,63 @@ public class KeycloakService : IKeycloakService
             TokenType = root.GetProperty("token_type").GetString()!
         };
     }
+
+    // Renouveler le token avec le refresh token
+    public async Task<TokenResponseDto> RefreshAsync(string refreshToken)
+    {
+        var clientId = _config["Keycloak:ClientId"]!;
+        var clientSecret = _config["Keycloak:ClientSecret"]!;
+        var tokenUrl = _config["Keycloak:TokenUrl"]!;
+
+        var body = new FormUrlEncodedContent(new[]
+        {
+            new KeyValuePair<string, string>("grant_type", "refresh_token"),
+            new KeyValuePair<string, string>("client_id", clientId),
+            new KeyValuePair<string, string>("client_secret", clientSecret),
+            new KeyValuePair<string, string>("refresh_token", refreshToken)
+        });
+
+        var response = await _httpClient.PostAsync(tokenUrl, body);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Keycloak refresh failed: {Error}", error);
+            throw new UnauthorizedAccessException($"Refresh token invalide ou expiré: {error}");
+        }
+
+        var json = await response.Content.ReadAsStringAsync();
+        var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        return new TokenResponseDto
+        {
+            AccessToken = root.GetProperty("access_token").GetString()!,
+            RefreshToken = root.GetProperty("refresh_token").GetString()!,
+            ExpiresIn = root.GetProperty("expires_in").GetInt32(),
+            TokenType = root.GetProperty("token_type").GetString()!
+        };
+    }
+
+    // Révoquer la session : invalide le refresh token côté Keycloak
+    public async Task LogoutAsync(string refreshToken)
+    {
+        var clientId = _config["Keycloak:ClientId"]!;
+        var clientSecret = _config["Keycloak:ClientSecret"]!;
+        var authority = _config["Keycloak:Authority"]!;
+        var logoutUrl = $"{authority}/protocol/openid-connect/logout";
+
+        var body = new FormUrlEncodedContent(new[]
+        {
+            new KeyValuePair<string, string>("client_id", clientId),
+            new KeyValuePair<string, string>("client_secret", clientSecret),
+            new KeyValuePair<string, string>("refresh_token", refreshToken)
+        });
+
+        var response = await _httpClient.PostAsync(logoutUrl, body);
+        if (!response.IsSuccessStatusCode)
+        {
+            var error = await response.Content.ReadAsStringAsync();
+            _logger.LogWarning("Keycloak logout failed: {Error}", error);
+        }
+    }
 }

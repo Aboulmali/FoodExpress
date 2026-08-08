@@ -55,6 +55,16 @@ public class UserService : IUserService
         return await _keycloak.LoginAsync(dto.Email, dto.Password);
     }
 
+    public async Task<TokenResponseDto> RefreshAsync(string refreshToken)
+    {
+        return await _keycloak.RefreshAsync(refreshToken);
+    }
+
+    public async Task LogoutAsync(string refreshToken)
+    {
+        await _keycloak.LogoutAsync(refreshToken);
+    }
+
     public async Task<UserDto?> GetByIdAsync(Guid id)
     {
         var user = await _db.Users.FindAsync(id);

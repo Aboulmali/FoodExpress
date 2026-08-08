@@ -105,6 +105,38 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task Refresh_DelegatesToKeycloak()
+    {
+        var db = CreateDb(nameof(Refresh_DelegatesToKeycloak));
+        var expected = new TokenResponseDto
+        {
+            AccessToken = "new-jwt",
+            RefreshToken = "new-refresh",
+            ExpiresIn = 300,
+            TokenType = "Bearer"
+        };
+        _keycloak.Setup(k => k.RefreshAsync("old-refresh")).ReturnsAsync(expected);
+
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+        var result = await service.RefreshAsync("old-refresh");
+
+        Assert.Equal("new-jwt", result.AccessToken);
+        _keycloak.Verify(k => k.RefreshAsync("old-refresh"), Times.Once);
+    }
+
+    [Fact]
+    public async Task Logout_DelegatesToKeycloak()
+    {
+        var db = CreateDb(nameof(Logout_DelegatesToKeycloak));
+        _keycloak.Setup(k => k.LogoutAsync("refresh-token")).Returns(Task.CompletedTask);
+
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+        await service.LogoutAsync("refresh-token");
+
+        _keycloak.Verify(k => k.LogoutAsync("refresh-token"), Times.Once);
+    }
+
+    [Fact]
     public async Task GetById_UserNotFound_ReturnsNull()
     {
         var db = CreateDb(nameof(GetById_UserNotFound_ReturnsNull));

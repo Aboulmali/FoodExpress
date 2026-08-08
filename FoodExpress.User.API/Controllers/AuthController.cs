@@ -52,4 +52,35 @@ public class AuthController : ControllerBase
             return Unauthorized(new { message = "Email ou mot de passe incorrect" });
         }
     }
+
+    /// <summary>
+    /// Renouvellement du token (refresh token rotation)
+    /// </summary>
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh([FromBody] RefreshTokenDto dto)
+    {
+        if (string.IsNullOrWhiteSpace(dto.RefreshToken))
+            return BadRequest(new { message = "Refresh token requis" });
+
+        try
+        {
+            var token = await _userService.RefreshAsync(dto.RefreshToken);
+            return Ok(token);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Unauthorized(new { message = "Session expirée. Veuillez vous reconnecter." });
+        }
+    }
+
+    /// <summary>
+    /// Déconnexion : révoque le refresh token côté Keycloak
+    /// </summary>
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout([FromBody] RefreshTokenDto dto)
+    {
+        if (!string.IsNullOrWhiteSpace(dto.RefreshToken))
+            await _userService.LogoutAsync(dto.RefreshToken);
+        return NoContent();
+    }
 }
