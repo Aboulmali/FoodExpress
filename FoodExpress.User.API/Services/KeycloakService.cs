@@ -20,16 +20,20 @@ public class KeycloakService : IKeycloakService
     // Récupérer le token admin pour appeler l'API Keycloak
     private async Task<string> GetAdminTokenAsync()
     {
+        var baseUrl = _config["Keycloak:BaseUrl"] ?? "http://localhost:8080";
+        var adminUser = _config["Keycloak:AdminUsername"] ?? "admin";
+        var adminPassword = _config["Keycloak:AdminPassword"] ?? "admin123";
+
         var body = new FormUrlEncodedContent(new[]
         {
             new KeyValuePair<string, string>("grant_type", "password"),
             new KeyValuePair<string, string>("client_id", "admin-cli"),
-            new KeyValuePair<string, string>("username", "admin"),
-            new KeyValuePair<string, string>("password", "admin123")
+            new KeyValuePair<string, string>("username", adminUser),
+            new KeyValuePair<string, string>("password", adminPassword)
         });
 
         var response = await _httpClient.PostAsync(
-            "http://localhost:8080/realms/master/protocol/openid-connect/token", body);
+            $"{baseUrl}/realms/master/protocol/openid-connect/token", body);
 
         response.EnsureSuccessStatusCode();
         var json = await response.Content.ReadAsStringAsync();
@@ -64,7 +68,7 @@ public class KeycloakService : IKeycloakService
             "application/json");
 
         var createResponse = await _httpClient.PostAsync(
-            "http://localhost:8080/admin/realms/foodexpress/users", jsonContent);
+            $"{_config["Keycloak:BaseUrl"]}/admin/realms/foodexpress/users", jsonContent);
 
         if (!createResponse.IsSuccessStatusCode)
         {
@@ -92,7 +96,7 @@ public class KeycloakService : IKeycloakService
 
         // Récupérer le rôle
         var roleResponse = await _httpClient.GetAsync(
-            $"http://localhost:8080/admin/realms/foodexpress/roles/{roleName}");
+            $"{_config["Keycloak:BaseUrl"]}/admin/realms/foodexpress/roles/{roleName}");
         roleResponse.EnsureSuccessStatusCode();
         var roleJson = await roleResponse.Content.ReadAsStringAsync();
 
@@ -100,7 +104,7 @@ public class KeycloakService : IKeycloakService
         var payload = $"[{roleJson}]";
         var content = new StringContent(payload, Encoding.UTF8, "application/json");
         var assignResponse = await _httpClient.PostAsync(
-            $"http://localhost:8080/admin/realms/foodexpress/users/{userId}/role-mappings/realm",
+            $"{_config["Keycloak:BaseUrl"]}/admin/realms/foodexpress/users/{userId}/role-mappings/realm",
             content);
 
         assignResponse.EnsureSuccessStatusCode();
@@ -115,13 +119,13 @@ public class KeycloakService : IKeycloakService
 
         // Récupérer le rôle
         var roleResponse = await _httpClient.GetAsync(
-            $"http://localhost:8080/admin/realms/foodexpress/roles/{roleName}");
+            $"{_config["Keycloak:BaseUrl"]}/admin/realms/foodexpress/roles/{roleName}");
         roleResponse.EnsureSuccessStatusCode();
         var roleJson = await roleResponse.Content.ReadAsStringAsync();
 
         // Retirer le mapping (idempotent : 204 même si absent)
         var request = new HttpRequestMessage(HttpMethod.Delete,
-            $"http://localhost:8080/admin/realms/foodexpress/users/{userId}/role-mappings/realm")
+            $"{_config["Keycloak:BaseUrl"]}/admin/realms/foodexpress/users/{userId}/role-mappings/realm")
         {
             Content = new StringContent($"[{roleJson}]", Encoding.UTF8, "application/json")
         };

@@ -70,6 +70,34 @@ public class RestaurantService : IRestaurantService
         return dto;
     }
 
+    // Restaurants du propriétaire connecté (dashboard owner)
+    public async Task<List<RestaurantDto>> GetMineAsync(Guid ownerId)
+    {
+        var restaurants = await _db.Restaurants
+            .Include(r => r.Dishes)
+            .Where(r => r.OwnerId == ownerId)
+            .OrderBy(r => r.Name)
+            .ToListAsync();
+
+        return restaurants.Select(MapToDto).ToList();
+    }
+
+    // DTO interne (service à service) : expose l'OwnerId uniquement aux consommateurs internes
+    public async Task<RestaurantInternalDto?> GetInternalAsync(Guid id)
+    {
+        var restaurant = await _db.Restaurants
+            .AsNoTracking()
+            .FirstOrDefaultAsync(r => r.Id == id);
+
+        return restaurant == null ? null : new RestaurantInternalDto
+        {
+            Id = restaurant.Id,
+            Name = restaurant.Name,
+            IsOpen = restaurant.IsOpen,
+            OwnerId = restaurant.OwnerId
+        };
+    }
+
     public async Task<RestaurantDto> CreateAsync(CreateRestaurantDto dto, Guid ownerId)
     {
         var restaurant = new Models.Entities.Restaurant
@@ -140,10 +168,14 @@ public class RestaurantService : IRestaurantService
         return true;
     }
 
-    public async Task<string?> UploadLogoAsync(Guid id, IFormFile file)
+    public async Task<string?> UploadLogoAsync(Guid id, IFormFile file, Guid callerId, bool isAdmin)
     {
         var restaurant = await _db.Restaurants.FindAsync(id);
         if (restaurant == null) return null;
+
+        // Sécurité : seul le propriétaire (ou un admin) modifie le logo du restaurant
+        if (!isAdmin && restaurant.OwnerId != callerId)
+            throw new UnauthorizedAccessException("Vous ne pouvez modifier que vos propres restaurants.");
 
         // Supprimer l'ancien logo s'il existe
         if (!string.IsNullOrEmpty(restaurant.LogoUrl))
@@ -178,7 +210,6 @@ public class RestaurantService : IRestaurantService
         OpeningTime = r.OpeningTime,
         ClosingTime = r.ClosingTime,
         Rating = r.Rating,
-        OwnerId = r.OwnerId,
         IsActive = r.IsActive,
         IsOpen = r.IsOpen,
         DishesCount = r.Dishes.Count

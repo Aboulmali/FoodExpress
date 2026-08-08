@@ -23,6 +23,12 @@ public class MinioFileStorageService : IFileStorageService
             .Build();
     }
 
+    private static readonly string[] AllowedExtensions =
+        [".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"];
+
+    private static readonly string[] AllowedContentTypes =
+        ["image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"];
+
     public async Task<string> UploadFileAsync(IFormFile file, string folder = "")
     {
         if (file == null || file.Length == 0)
@@ -37,8 +43,17 @@ public class MinioFileStorageService : IFileStorageService
             await _minioClient.MakeBucketAsync(makeBucketArgs);
         }
 
+        // Sécurité : seulement des images, jamais des fichiers exécutables/html/etc.
+        var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (!AllowedExtensions.Contains(extension))
+            throw new ArgumentException(
+                $"Extension interdite : {extension}. Formats autorisés : {string.Join(", ", AllowedExtensions)}");
+
+        var contentType = file.ContentType.ToLowerInvariant();
+        if (!AllowedContentTypes.Contains(contentType))
+            throw new ArgumentException($"Type de contenu interdite : {contentType}");
+
         // Nom unique pour le fichier
-        var extension = Path.GetExtension(file.FileName);
         var fileName = string.IsNullOrEmpty(folder)
             ? $"{Guid.NewGuid()}{extension}"
             : $"{folder}/{Guid.NewGuid()}{extension}";

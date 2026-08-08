@@ -52,11 +52,14 @@ builder.Services.AddHealthChecks()
 builder.Services.AddFoodExpressKeycloakAuth(builder.Configuration);
 
 // ==================== CORS ====================
+var allowedOrigins = (builder.Configuration["Cors:Origins"] ?? "http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
     });
 });
 

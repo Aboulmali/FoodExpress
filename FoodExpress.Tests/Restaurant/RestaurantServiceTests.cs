@@ -2,6 +2,7 @@ using FoodExpress.Restaurant.API.Data;
 using FoodExpress.Restaurant.API.DTOs;
 using FoodExpress.Restaurant.API.Models.Entities;
 using FoodExpress.Restaurant.API.Services;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -201,5 +202,81 @@ public class RestaurantServiceTests
         Assert.True(result);
         Assert.Empty(db.Restaurants);
         _cache.Verify(c => c.RemoveAsync("restaurants:all"), Times.Once);
+    }
+
+    [Fact]
+    public async Task GetMine_ReturnsOnlyOwnRestaurants()
+    {
+        var db = CreateDb(nameof(GetMine_ReturnsOnlyOwnRestaurants));
+        var ownerId = Guid.NewGuid();
+        var otherId = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = Guid.NewGuid(), Name = "Mien", Address = "a", City = "c", OwnerId = ownerId });
+        db.Restaurants.Add(new RestaurantEntity { Id = Guid.NewGuid(), Name = "A moi aussi", Address = "b", City = "c", OwnerId = ownerId });
+        db.Restaurants.Add(new RestaurantEntity { Id = Guid.NewGuid(), Name = "A un autre", Address = "c", City = "c", OwnerId = otherId });
+        await db.SaveChangesAsync();
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+        var result = await service.GetMineAsync(ownerId);
+
+        Assert.Equal(2, result.Count);
+        Assert.All(result, r =>
+            Assert.Contains(r.Name, new[] { "Mien", "A moi aussi" }));
+    }
+
+    [Fact]
+    public async Task PublicDto_DoesNotExposeOwnerId()
+    {
+        var db = CreateDb(nameof(PublicDto_DoesNotExposeOwnerId));
+        db.Restaurants.Add(new RestaurantEntity { Id = Guid.NewGuid(), Name = "R", Address = "a", City = "c" });
+        await db.SaveChangesAsync();
+
+        _cache.Setup(c => c.GetAsync<List<RestaurantDto>>("restaurants:all")).ReturnsAsync(() => (List<RestaurantDto>?)null);
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+        var result = await service.GetAllAsync();
+
+        var json = System.Text.Json.JsonSerializer.Serialize(result);
+        Assert.DoesNotContain("OwnerId", json, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UploadLogo_NotOwner_Throws()
+    {
+        var db = CreateDb(nameof(UploadLogo_NotOwner_Throws));
+        var id = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "R", Address = "a", City = "c", OwnerId = Guid.NewGuid() });
+        await db.SaveChangesAsync();
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+
+        var file = new FormFile(new MemoryStream(new byte[10]), 0, 10, "logo", "logo.png")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/png" }
+        };
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.UploadLogoAsync(id, file, Guid.NewGuid(), isAdmin: false));
+    }
+
+    [Fact]
+    public async Task UploadLogo_Owner_Succeeds()
+    {
+        var db = CreateDb(nameof(UploadLogo_Owner_Succeeds));
+        var id = Guid.NewGuid();
+        var ownerId = Guid.NewGuid();
+        db.Restaurants.Add(new RestaurantEntity { Id = id, Name = "R", Address = "a", City = "c", OwnerId = ownerId });
+        await db.SaveChangesAsync();
+
+        _fileStorage.Setup(f => f.UploadFileAsync(It.IsAny<IFormFile>(), "restaurants")).ReturnsAsync("http://minio/logo.png");
+
+        var service = new RestaurantService(db, _cache.Object, _fileStorage.Object, _logger.Object);
+        var file = new FormFile(new MemoryStream(new byte[10]), 0, 10, "logo", "logo.png")
+        {
+            Headers = new HeaderDictionary { ["Content-Type"] = "image/png" }
+        };
+
+        var url = await service.UploadLogoAsync(id, file, ownerId, isAdmin: false);
+
+        Assert.Equal("http://minio/logo.png", url);
     }
 }

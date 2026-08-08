@@ -33,15 +33,19 @@ public class DishesController : ControllerBase
         return dish == null ? NotFound() : Ok(dish);
     }
 
-    /// <summary>Créer un plat</summary>
+    /// <summary>Créer un plat (dans SES restaurants uniquement)</summary>
     [HttpPost]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateDishDto dto)
     {
         try
         {
-            var dish = await _service.CreateAsync(dto);
+            var dish = await _service.CreateAsync(dto, CurrentOwnerId ?? Guid.Empty, IsAdmin);
             return CreatedAtAction(nameof(GetById), new { id = dish.Id }, dish);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
         }
         catch (KeyNotFoundException ex)
         {
@@ -49,25 +53,47 @@ public class DishesController : ControllerBase
         }
     }
 
-    /// <summary>Modifier un plat</summary>
+    /// <summary>Modifier un plat (propriétaire du restaurant uniquement)</summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateDishDto dto)
     {
-        var dish = await _service.UpdateAsync(id, dto);
-        return dish == null ? NotFound() : Ok(dish);
+        try
+        {
+            var dish = await _service.UpdateAsync(id, dto, CurrentOwnerId ?? Guid.Empty, IsAdmin);
+            return dish == null ? NotFound() : Ok(dish);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
     }
 
-    /// <summary>Supprimer un plat</summary>
+    /// <summary>Supprimer un plat (propriétaire du restaurant uniquement)</summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var deleted = await _service.DeleteAsync(id);
-        return deleted ? NoContent() : NotFound();
+        try
+        {
+            var deleted = await _service.DeleteAsync(id, CurrentOwnerId ?? Guid.Empty, IsAdmin);
+            return deleted ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
     }
 
-    /// <summary>Uploader l'image d'un plat</summary>
+    /// <summary>Uploader l'image d'un plat (propriétaire du restaurant uniquement)</summary>
     [HttpPost("{id:guid}/image")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UploadImage(Guid id, IFormFile file)
@@ -75,7 +101,34 @@ public class DishesController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest("Fichier vide");
 
-        var url = await _service.UploadImageAsync(id, file);
-        return url == null ? NotFound() : Ok(new { imageUrl = url });
+        try
+        {
+            var url = await _service.UploadImageAsync(id, file, CurrentOwnerId ?? Guid.Empty, IsAdmin);
+            return url == null ? NotFound() : Ok(new { imageUrl = url });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
+
+    private Guid? CurrentOwnerId
+    {
+        get
+        {
+            var sub = User.FindFirst("sub")?.Value
+                      ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(sub, out var id) ? id : null;
+        }
+    }
+
+    private bool IsAdmin => User.IsInRole(Roles.Admin);
 }

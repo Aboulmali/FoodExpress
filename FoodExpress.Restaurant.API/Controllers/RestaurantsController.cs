@@ -11,10 +11,12 @@ namespace FoodExpress.Restaurant.API.Controllers;
 public class RestaurantsController : ControllerBase
 {
     private readonly IRestaurantService _service;
+    private readonly IConfiguration _configuration;
 
-    public RestaurantsController(IRestaurantService service)
+    public RestaurantsController(IRestaurantService service, IConfiguration configuration)
     {
         _service = service;
+        _configuration = configuration;
     }
 
     // L'identité du propriétaire vient TOUJOURS du token JWT (claim "sub"),
@@ -41,6 +43,33 @@ public class RestaurantsController : ControllerBase
     public async Task<IActionResult> GetById(Guid id)
     {
         var restaurant = await _service.GetByIdAsync(id);
+        return restaurant == null ? NotFound() : Ok(restaurant);
+    }
+
+    /// <summary>Mes restaurants (RestaurantOwner ou Admin — l'OwnerId n'est jamais exposé publiquement)</summary>
+    [HttpGet("mine")]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
+    public async Task<IActionResult> GetMine()
+    {
+        var ownerId = CurrentOwnerId;
+        if (ownerId == null)
+            return Unauthorized(new { message = "Token invalide" });
+
+        var restaurants = await _service.GetMineAsync(ownerId.Value);
+        return Ok(restaurants);
+    }
+
+    /// <summary>Endpoint INTERNE (service-à-service) : inclut l'OwnerId.
+    /// Protégé par un secret partagé (header X-Internal-Token) — jamais accessible au public.</summary>
+    [HttpGet("{id:guid}/internal")]
+    public async Task<IActionResult> GetInternal(Guid id)
+    {
+        var secret = _configuration["InternalApi:SharedSecret"];
+        if (string.IsNullOrEmpty(secret) ||
+            !string.Equals(Request.Headers["X-Internal-Token"], secret, StringComparison.Ordinal))
+            return Unauthorized();
+
+        var restaurant = await _service.GetInternalAsync(id);
         return restaurant == null ? NotFound() : Ok(restaurant);
     }
 
@@ -97,7 +126,7 @@ public class RestaurantsController : ControllerBase
         }
     }
 
-    /// <summary>Uploader le logo d'un restaurant</summary>
+    /// <summary>Uploader le logo d'un restaurant (propriétaire uniquement)</summary>
     [HttpPost("{id:guid}/logo")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UploadLogo(Guid id, IFormFile file)
@@ -105,7 +134,18 @@ public class RestaurantsController : ControllerBase
         if (file == null || file.Length == 0)
             return BadRequest("Fichier vide");
 
-        var url = await _service.UploadLogoAsync(id, file);
-        return url == null ? NotFound() : Ok(new { logoUrl = url });
+        try
+        {
+            var url = await _service.UploadLogoAsync(id, file, CurrentOwnerId ?? Guid.Empty, User.IsInRole(Roles.Admin));
+            return url == null ? NotFound() : Ok(new { logoUrl = url });
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 }

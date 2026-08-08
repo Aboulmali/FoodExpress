@@ -81,8 +81,11 @@ builder.Services.AddHealthChecks()
 builder.Services.AddFoodExpressKeycloakAuth(builder.Configuration);
 
 // ========== CORS ==========
+var allowedOrigins = (builder.Configuration["Cors:Origins"] ?? "http://localhost:5173")
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+
 builder.Services.AddCors(options =>
-    options.AddDefaultPolicy(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader()));
+    options.AddDefaultPolicy(p => p.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader()));
 
 // ========== Controllers + Swagger ==========
 builder.Services.AddControllers();

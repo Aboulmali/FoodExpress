@@ -45,12 +45,16 @@ public class DishService : IDishService
         return dish == null ? null : MapToDto(dish);
     }
 
-    public async Task<DishDto> CreateAsync(CreateDishDto dto)
+    public async Task<DishDto> CreateAsync(CreateDishDto dto, Guid callerId, bool isAdmin)
     {
         // Vérifier que le restaurant et la catégorie existent
-        var restaurantExists = await _db.Restaurants.AnyAsync(r => r.Id == dto.RestaurantId);
-        if (!restaurantExists)
+        var restaurant = await _db.Restaurants.FindAsync(dto.RestaurantId);
+        if (restaurant == null)
             throw new KeyNotFoundException("Restaurant introuvable");
+
+        // Sécurité : un RestaurantOwner ne crée un plat que dans SES restaurants
+        if (!isAdmin && restaurant.OwnerId != callerId)
+            throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
 
         var categoryExists = await _db.Categories.AnyAsync(c => c.Id == dto.CategoryId);
         if (!categoryExists)
@@ -79,10 +83,12 @@ public class DishService : IDishService
         return await GetByIdAsync(dish.Id) ?? throw new Exception("Erreur");
     }
 
-    public async Task<DishDto?> UpdateAsync(Guid id, UpdateDishDto dto)
+    public async Task<DishDto?> UpdateAsync(Guid id, UpdateDishDto dto, Guid callerId, bool isAdmin)
     {
         var dish = await _db.Dishes.FindAsync(id);
         if (dish == null) return null;
+
+        await EnsureOwnerAsync(dish.RestaurantId, callerId, isAdmin);
 
         dish.Name = dto.Name;
         dish.Description = dto.Description;
@@ -101,10 +107,12 @@ public class DishService : IDishService
         return await GetByIdAsync(id);
     }
 
-    public async Task<bool> DeleteAsync(Guid id)
+    public async Task<bool> DeleteAsync(Guid id, Guid callerId, bool isAdmin)
     {
         var dish = await _db.Dishes.FindAsync(id);
         if (dish == null) return false;
+
+        await EnsureOwnerAsync(dish.RestaurantId, callerId, isAdmin);
 
         if (!string.IsNullOrEmpty(dish.ImageUrl))
             await _fileStorage.DeleteFileAsync(dish.ImageUrl);
@@ -116,10 +124,12 @@ public class DishService : IDishService
         return true;
     }
 
-    public async Task<string?> UploadImageAsync(Guid id, IFormFile file)
+    public async Task<string?> UploadImageAsync(Guid id, IFormFile file, Guid callerId, bool isAdmin)
     {
         var dish = await _db.Dishes.FindAsync(id);
         if (dish == null) return null;
+
+        await EnsureOwnerAsync(dish.RestaurantId, callerId, isAdmin);
 
         if (!string.IsNullOrEmpty(dish.ImageUrl))
             await _fileStorage.DeleteFileAsync(dish.ImageUrl);
@@ -132,6 +142,19 @@ public class DishService : IDishService
         await _cache.RemoveAsync($"restaurants:id:{dish.RestaurantId}");
 
         return url;
+    }
+
+    // Sécurité : le plat appartient à un restaurant dont le caller doit être le propriétaire
+    private async Task EnsureOwnerAsync(Guid restaurantId, Guid callerId, bool isAdmin)
+    {
+        if (isAdmin) return;
+
+        var restaurant = await _db.Restaurants.FindAsync(restaurantId);
+        if (restaurant == null)
+            throw new KeyNotFoundException("Restaurant introuvable");
+
+        if (restaurant.OwnerId != callerId)
+            throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
     }
 
     private static DishDto MapToDto(Dish d) => new()
