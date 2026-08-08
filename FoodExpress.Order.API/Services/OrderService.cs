@@ -218,6 +218,83 @@ public class OrderService : IOrderService
         return MapToDto(order);
     }
 
+    public async Task<List<OrderDto>> GetByDeliveryPersonAsync(Guid deliveryPersonId)
+    {
+        var orders = await _db.Orders
+            .Include(o => o.Items)
+            .Where(o => o.Delivery != null && o.Delivery.DeliveryPersonId == deliveryPersonId)
+            .OrderByDescending(o => o.CreatedAt)
+            .ToListAsync();
+
+        return orders.Select(MapToDto).ToList();
+    }
+
+    public async Task<OrderDto?> UpdateDeliveryStatusAsync(Guid id, UpdateOrderStatusDto dto, Guid? callerId, bool isAdmin)
+    {
+        var order = await _db.Orders
+            .Include(o => o.Items)
+            .Include(o => o.Delivery)
+            .FirstOrDefaultAsync(o => o.Id == id);
+        if (order == null) return null;
+
+        if (!isAdmin && (order.Delivery == null || order.Delivery.DeliveryPersonId != callerId))
+            throw new UnauthorizedAccessException("Cette commande ne vous est pas assignée");
+
+        if (dto.NewStatus is not (OrderStatus.OnDelivery or OrderStatus.Delivered))
+            throw new InvalidOperationException("Un livreur ne peut passer une commande qu'en OnDelivery ou Delivered");
+
+        var previousStatus = order.Status;
+        order.Status = dto.NewStatus;
+        var now = DateTime.UtcNow;
+        switch (dto.NewStatus)
+        {
+            case OrderStatus.OnDelivery: order.OnDeliveryAt = now; break;
+            case OrderStatus.Delivered: order.DeliveredAt = now; break;
+        }
+
+        if (order.Delivery != null)
+        {
+            if (dto.NewStatus == OrderStatus.Delivered)
+            {
+                order.Delivery.Status = DeliveryStatus.Delivered;
+                order.Delivery.DeliveredAt = now;
+            }
+        }
+
+        await _db.SaveChangesAsync();
+
+        await _eventBus.PublishAsync(new OrderStatusChangedEvent
+        {
+            OrderId = order.Id,
+            CustomerId = order.CustomerId,
+            PreviousStatus = previousStatus.ToString(),
+            NewStatus = dto.NewStatus.ToString(),
+            Items = order.Items.Select(i => new OrderItemInfo
+            {
+                DishId = i.DishId,
+                DishName = i.DishName,
+                Quantity = i.Quantity,
+                UnitPrice = i.UnitPrice
+            }).ToList()
+        });
+
+        if (dto.NewStatus == OrderStatus.Delivered)
+        {
+            await _eventBus.PublishAsync(new OrderDeliveredEvent
+            {
+                OrderId = order.Id,
+                CustomerId = order.CustomerId,
+                DeliveryPersonId = order.Delivery?.DeliveryPersonId ?? Guid.Empty,
+                TotalAmount = order.TotalAmount,
+                DeliveredAt = now
+            });
+        }
+
+        _logger.LogInformation("🚚 Livraison mise à jour: {OrderNumber} → {Status}", order.OrderNumber, dto.NewStatus);
+
+        return MapToDto(order);
+    }
+
     public async Task<OrderDto?> AssignDeliveryAsync(Guid orderId, AssignDeliveryDto dto)
     {
         var order = await _db.Orders

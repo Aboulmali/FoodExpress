@@ -178,6 +178,7 @@ public class RestaurantService : IRestaurantService
         OpeningTime = r.OpeningTime,
         ClosingTime = r.ClosingTime,
         Rating = r.Rating,
+        OwnerId = r.OwnerId,
         IsActive = r.IsActive,
         IsOpen = r.IsOpen,
         DishesCount = r.Dishes.Count

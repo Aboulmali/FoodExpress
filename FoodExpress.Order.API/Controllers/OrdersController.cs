@@ -82,6 +82,49 @@ public class OrdersController : ControllerBase
         return Ok(orders);
     }
 
+    /// <summary>Récupérer les commandes d'un livreur (l'agent concerné ou un Admin)</summary>
+    [HttpGet("delivery/{deliveryPersonId:guid}")]
+    [Authorize(Policy = Policies.DeliveryOrAdmin)]
+    public async Task<IActionResult> GetByDeliveryPerson(Guid deliveryPersonId)
+    {
+        // Un livreur ne voit QUE les commandes qui lui sont assignées.
+        if (!User.IsInRole("Admin"))
+        {
+            var sub = User.FindFirst("sub")?.Value
+                      ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(sub, out var currentId) || currentId != deliveryPersonId)
+                return Forbid(); // 403 : ce ne sont pas vos livraisons
+        }
+
+        var orders = await _service.GetByDeliveryPersonAsync(deliveryPersonId);
+        return Ok(orders);
+    }
+
+    /// <summary>Mettre à jour le statut de livraison d'une commande (livreur assigné ou Admin)</summary>
+    [HttpPut("{id:guid}/delivery-status")]
+    [Authorize(Policy = Policies.DeliveryOrAdmin)]
+    public async Task<IActionResult> UpdateDeliveryStatus(Guid id, [FromBody] UpdateOrderStatusDto dto)
+    {
+        var sub = User.FindFirst("sub")?.Value
+                  ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        Guid.TryParse(sub, out var callerId);
+        var isAdmin = User.IsInRole("Admin");
+
+        try
+        {
+            var order = await _service.UpdateDeliveryStatusAsync(id, dto, callerId, isAdmin);
+            return order == null ? NotFound() : Ok(order);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
     /// <summary>Mettre à jour le statut d'une commande</summary>
     [HttpPut("{id:guid}/status")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
