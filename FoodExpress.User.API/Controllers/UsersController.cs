@@ -1,4 +1,5 @@
-﻿using FoodExpress.User.API.DTOs;
+﻿using FoodExpress.Common.Auth;
+using FoodExpress.User.API.DTOs;
 using FoodExpress.User.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -20,7 +21,7 @@ public class UsersController : ControllerBase
     /// Récupérer tous les utilisateurs (Admin uniquement)
     /// </summary>
     [HttpGet]
-    [Authorize]
+    [Authorize(Policy = Policies.AdminOnly)]
     public async Task<IActionResult> GetAll()
     {
         var users = await _userService.GetAllAsync();
@@ -31,7 +32,7 @@ public class UsersController : ControllerBase
     /// Récupérer un utilisateur par ID
     /// </summary>
     [HttpGet("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.AdminOnly)]
     public async Task<IActionResult> GetById(Guid id)
     {
         var user = await _userService.GetByIdAsync(id);
@@ -43,7 +44,7 @@ public class UsersController : ControllerBase
     /// Récupérer les adresses d'un utilisateur
     /// </summary>
     [HttpGet("{id:guid}/addresses")]
-    [Authorize]
+    [Authorize(Policy = Policies.AdminOnly)]
     public async Task<IActionResult> GetAddresses(Guid id)
     {
         var addresses = await _userService.GetAddressesAsync(id);
@@ -54,7 +55,7 @@ public class UsersController : ControllerBase
     /// Ajouter une adresse à un utilisateur
     /// </summary>
     [HttpPost("{id:guid}/addresses")]
-    [Authorize]
+    [Authorize(Policy = Policies.AdminOnly)]
     public async Task<IActionResult> AddAddress(Guid id, [FromBody] CreateAddressDto dto)
     {
         try

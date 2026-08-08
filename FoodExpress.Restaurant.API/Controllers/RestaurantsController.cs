@@ -1,4 +1,5 @@
-﻿using FoodExpress.Restaurant.API.DTOs;
+﻿using FoodExpress.Common.Auth;
+using FoodExpress.Restaurant.API.DTOs;
 using FoodExpress.Restaurant.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -32,9 +33,9 @@ public class RestaurantsController : ControllerBase
         return restaurant == null ? NotFound() : Ok(restaurant);
     }
 
-    /// <summary>Créer un restaurant (Auth requise)</summary>
+    /// <summary>Créer un restaurant (RestaurantOwner ou Admin)</summary>
     [HttpPost]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateRestaurantDto dto)
     {
         var restaurant = await _service.CreateAsync(dto);
@@ -43,7 +44,7 @@ public class RestaurantsController : ControllerBase
 
     /// <summary>Mettre à jour un restaurant</summary>
     [HttpPut("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateRestaurantDto dto)
     {
         var restaurant = await _service.UpdateAsync(id, dto);
@@ -52,7 +53,7 @@ public class RestaurantsController : ControllerBase
 
     /// <summary>Supprimer un restaurant</summary>
     [HttpDelete("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _service.DeleteAsync(id);
@@ -61,7 +62,7 @@ public class RestaurantsController : ControllerBase
 
     /// <summary>Uploader le logo d'un restaurant</summary>
     [HttpPost("{id:guid}/logo")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UploadLogo(Guid id, IFormFile file)
     {
         if (file == null || file.Length == 0)

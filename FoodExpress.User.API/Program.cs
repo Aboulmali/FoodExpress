@@ -1,3 +1,4 @@
+using FoodExpress.Common.Auth;
 using FoodExpress.Common.HealthChecks;
 using FoodExpress.User.API.Data;
 using FoodExpress.User.API.Services;
@@ -47,25 +48,8 @@ builder.Services.AddHealthChecks()
     .AddCheck("PostgreSQL", new PostgresHealthCheck(builder.Configuration.GetConnectionString("UserDb")!), tags: new[] { "database" })
     .AddCheck("Elasticsearch", new ElasticsearchHealthCheck("http://localhost:9200"), tags: new[] { "logs" });
 
-// ==================== Authentification JWT (Keycloak) ====================
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = builder.Configuration["Keycloak:Authority"];
-        options.RequireHttpsMetadata = false;
-        options.Audience = builder.Configuration["Keycloak:Audience"];
-
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Keycloak:Authority"]
-        };
-    });
-
-builder.Services.AddAuthorization();
+// ==================== Authentification JWT (Keycloak) + RBAC ====================
+builder.Services.AddFoodExpressKeycloakAuth(builder.Configuration);
 
 // ==================== CORS ====================
 builder.Services.AddCors(options =>
