@@ -21,4 +21,5 @@ public class RestaurantInfo
     public Guid Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public bool IsOpen { get; set; }
+    public Guid OwnerId { get; set; }
 }

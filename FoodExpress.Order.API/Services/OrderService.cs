@@ -26,7 +26,7 @@ public class OrderService : IOrderService
         _logger = logger;
     }
 
-    public async Task<OrderDto> CreateAsync(CreateOrderDto dto)
+    public async Task<OrderDto> CreateAsync(CreateOrderDto dto, Guid customerId)
     {
         // 1. Vérifier que le restaurant existe et est ouvert
         var restaurant = await _restaurantApi.GetRestaurantAsync(dto.RestaurantId)
@@ -70,7 +70,9 @@ public class OrderService : IOrderService
         {
             Id = Guid.NewGuid(),
             OrderNumber = GenerateOrderNumber(),
-            CustomerId = dto.CustomerId,
+            // Sécurité : le client est TOUJOURS celui du token JWT (sub),
+            // jamais celui envoyé dans le corps de la requête.
+            CustomerId = customerId,
             CustomerName = dto.CustomerName,
             CustomerPhone = dto.CustomerPhone,
             RestaurantId = dto.RestaurantId,
@@ -113,14 +115,20 @@ public class OrderService : IOrderService
         return MapToDto(order);
     }
 
-    public async Task<OrderDto?> GetByIdAsync(Guid id)
+    public async Task<OrderDto?> GetByIdAsync(Guid id, Guid callerId, bool isAdmin)
     {
         var order = await _db.Orders
             .Include(o => o.Items)
             .Include(o => o.Delivery)
             .FirstOrDefaultAsync(o => o.Id == id);
 
-        return order == null ? null : MapToDto(order);
+        if (order == null) return null;
+
+        // Un client ne peut consulter QUE ses propres commandes.
+        if (!isAdmin && order.CustomerId != callerId)
+            throw new UnauthorizedAccessException("Cette commande ne vous appartient pas");
+
+        return MapToDto(order);
     }
 
     public async Task<List<OrderDto>> GetByCustomerAsync(Guid customerId)
@@ -134,8 +142,18 @@ public class OrderService : IOrderService
         return orders.Select(MapToDto).ToList();
     }
 
-    public async Task<List<OrderDto>> GetByRestaurantAsync(Guid restaurantId)
+    public async Task<List<OrderDto>> GetByRestaurantAsync(Guid restaurantId, Guid callerId, bool isAdmin)
     {
+        // Sécurité : un RestaurantOwner ne voit QUE les commandes de SES restaurants.
+        if (!isAdmin)
+        {
+            var restaurant = await _restaurantApi.GetRestaurantAsync(restaurantId)
+                ?? throw new KeyNotFoundException("Restaurant introuvable");
+
+            if (restaurant.OwnerId != callerId)
+                throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
+        }
+
         var orders = await _db.Orders
             .Include(o => o.Items)
             .Where(o => o.RestaurantId == restaurantId)
@@ -155,13 +173,23 @@ public class OrderService : IOrderService
         return orders.Select(MapToDto).ToList();
     }
 
-    public async Task<OrderDto?> UpdateStatusAsync(Guid id, UpdateOrderStatusDto dto)
+    public async Task<OrderDto?> UpdateStatusAsync(Guid id, UpdateOrderStatusDto dto, Guid callerId, bool isAdmin)
     {
         var order = await _db.Orders
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Id == id);
 
         if (order == null) return null;
+
+        // Sécurité : un RestaurantOwner ne modifie que les commandes de SES restaurants.
+        if (!isAdmin)
+        {
+            var restaurant = await _restaurantApi.GetRestaurantAsync(order.RestaurantId)
+                ?? throw new KeyNotFoundException("Restaurant introuvable");
+
+            if (restaurant.OwnerId != callerId)
+                throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
+        }
 
         var previousStatus = order.Status;
         order.Status = dto.NewStatus;
@@ -329,12 +357,16 @@ public class OrderService : IOrderService
         return MapToDto(order);
     }
 
-    public async Task<bool> CancelAsync(Guid id, string reason)
+    public async Task<bool> CancelAsync(Guid id, string reason, Guid callerId, bool isAdmin)
     {
         var order = await _db.Orders
             .Include(o => o.Items)
             .FirstOrDefaultAsync(o => o.Id == id);
         if (order == null) return false;
+
+        // Sécurité : un client ne peut annuler QUE ses propres commandes.
+        if (!isAdmin && order.CustomerId != callerId)
+            throw new UnauthorizedAccessException("Vous ne pouvez annuler que vos propres commandes");
 
         if (order.Status == OrderStatus.Delivered)
             throw new InvalidOperationException("Impossible d'annuler une commande livrée");

@@ -453,25 +453,47 @@
     "notBefore" : 0,
     "groups" : [ ]
   }, {
-    "id" : "6c590e0a-8126-4916-88f5-6b05b6d5a589",
-    "username" : "e2e_1559850984@test.com",
-    "firstName" : "E2E",
-    "lastName" : "Test",
-    "email" : "e2e_1559850984@test.com",
-    "emailVerified" : true,
-    "createdTimestamp" : 1786136922297,
+    "id" : "337c20ce-6f5a-49f1-8d30-c2149eb8a214",
+    "username" : "livreur.demo@test.com",
+    "firstName" : "Livreur",
+    "lastName" : "Demo",
+    "email" : "livreur.demo@test.com",
+    "emailVerified" : false,
+    "createdTimestamp" : 1786156903731,
     "enabled" : true,
     "totp" : false,
     "credentials" : [ {
-      "id" : "bfcd9bb0-a582-4cb0-a62a-be4f70e77229",
+      "id" : "7c306a23-db60-470b-bea9-7282b6d79459",
       "type" : "password",
-      "createdDate" : 1786136922962,
-      "secretData" : "{\"value\":\"yXK+AGTV0N2gnNqL6NEbF1rbeQSwEdOlDZOn2xzz3xd2mfKpedomAK4EytGihWqTF00PYZ0txaUqjzK8Kb0jhg==\",\"salt\":\"EaY499d5pD2Z08dFgu10Fg==\",\"additionalParameters\":{}}",
+      "createdDate" : 1786156904304,
+      "secretData" : "{\"value\":\"EvLyJRCfGwpN1Ph18NvRDOBuY9SjYE9UCryszcc+2FZ6uCJbS0RLNx+CheIF6nurtq+y7s9YZy/FQoRy8oc23g==\",\"salt\":\"rX0HW9+YtHrrSdwMF8jjIQ==\",\"additionalParameters\":{}}",
       "credentialData" : "{\"hashIterations\":210000,\"algorithm\":\"pbkdf2-sha512\",\"additionalParameters\":{}}"
     } ],
     "disableableCredentialTypes" : [ ],
     "requiredActions" : [ ],
-    "realmRoles" : [ "Customer", "default-roles-foodexpress" ],
+    "realmRoles" : [ "DeliveryPerson", "default-roles-foodexpress" ],
+    "notBefore" : 0,
+    "groups" : [ ]
+  }, {
+    "id" : "ead34ab1-3d0e-41b2-b556-71ca2bcddb2f",
+    "username" : "owner.demo@test.com",
+    "firstName" : "Owner",
+    "lastName" : "Demo",
+    "email" : "owner.demo@test.com",
+    "emailVerified" : true,
+    "createdTimestamp" : 1786152160791,
+    "enabled" : true,
+    "totp" : false,
+    "credentials" : [ {
+      "id" : "a8ffaa3b-0f2b-4e29-9718-53ed8c969b53",
+      "type" : "password",
+      "createdDate" : 1786152161726,
+      "secretData" : "{\"value\":\"LPKD/4M9Kg2lKhBDtVTzQ4Qd+9i+/iexmLPhnrwcGVFuues0M65NRX3kDSrrn9tfN1SXjRA5FGahY6WPXTJ3Yw==\",\"salt\":\"y6VILeK3i/L/gdw22526Yg==\",\"additionalParameters\":{}}",
+      "credentialData" : "{\"hashIterations\":210000,\"algorithm\":\"pbkdf2-sha512\",\"additionalParameters\":{}}"
+    } ],
+    "disableableCredentialTypes" : [ ],
+    "requiredActions" : [ ],
+    "realmRoles" : [ "default-roles-foodexpress", "RestaurantOwner" ],
     "notBefore" : 0,
     "groups" : [ ]
   }, {
@@ -515,7 +537,7 @@
     } ],
     "disableableCredentialTypes" : [ ],
     "requiredActions" : [ ],
-    "realmRoles" : [ "Customer", "default-roles-foodexpress" ],
+    "realmRoles" : [ "Customer", "default-roles-foodexpress", "RestaurantOwner" ],
     "notBefore" : 0,
     "groups" : [ ]
   }, {

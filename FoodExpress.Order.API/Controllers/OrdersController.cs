@@ -17,14 +17,31 @@ public class OrdersController : ControllerBase
         _service = service;
     }
 
+    // L'identité vient TOUJOURS du token JWT (claim "sub"), jamais du corps de la requête.
+    private Guid? CurrentUserId
+    {
+        get
+        {
+            var sub = User.FindFirst("sub")?.Value
+                      ?? User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(sub, out var id) ? id : null;
+        }
+    }
+
+    private bool IsAdmin => User.IsInRole(Roles.Admin);
+
     /// <summary>Créer une nouvelle commande</summary>
     [HttpPost]
     [Authorize(Policy = Policies.CustomerOnly)]
     public async Task<IActionResult> Create([FromBody] CreateOrderDto dto)
     {
+        var callerId = CurrentUserId;
+        if (callerId == null)
+            return Unauthorized(new { message = "Token invalide" });
+
         try
         {
-            var order = await _service.CreateAsync(dto);
+            var order = await _service.CreateAsync(dto, callerId.Value);
             return CreatedAtAction(nameof(GetById), new { id = order.Id }, order);
         }
         catch (KeyNotFoundException ex)
@@ -37,13 +54,20 @@ public class OrdersController : ControllerBase
         }
     }
 
-    /// <summary>Récupérer une commande par ID</summary>
+    /// <summary>Récupérer une commande par ID (le client concerné ou un Admin)</summary>
     [HttpGet("{id:guid}")]
     [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> GetById(Guid id)
     {
-        var order = await _service.GetByIdAsync(id);
-        return order == null ? NotFound() : Ok(order);
+        try
+        {
+            var order = await _service.GetByIdAsync(id, CurrentUserId ?? Guid.Empty, IsAdmin);
+            return order == null ? NotFound() : Ok(order);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre commande
+        }
     }
 
     /// <summary>Récupérer toutes les commandes</summary>
@@ -73,13 +97,24 @@ public class OrdersController : ControllerBase
         return Ok(orders);
     }
 
-    /// <summary>Récupérer les commandes d'un restaurant</summary>
+    /// <summary>Récupérer les commandes d'un restaurant (le propriétaire ou un Admin)</summary>
     [HttpGet("restaurant/{restaurantId:guid}")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> GetByRestaurant(Guid restaurantId)
     {
-        var orders = await _service.GetByRestaurantAsync(restaurantId);
-        return Ok(orders);
+        try
+        {
+            var orders = await _service.GetByRestaurantAsync(restaurantId, CurrentUserId ?? Guid.Empty, IsAdmin);
+            return Ok(orders);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
     }
 
     /// <summary>Récupérer les commandes d'un livreur (l'agent concerné ou un Admin)</summary>
@@ -125,13 +160,24 @@ public class OrdersController : ControllerBase
         }
     }
 
-    /// <summary>Mettre à jour le statut d'une commande</summary>
+    /// <summary>Mettre à jour le statut d'une commande (le propriétaire du restaurant ou un Admin)</summary>
     [HttpPut("{id:guid}/status")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateOrderStatusDto dto)
     {
-        var order = await _service.UpdateStatusAsync(id, dto);
-        return order == null ? NotFound() : Ok(order);
+        try
+        {
+            var order = await _service.UpdateStatusAsync(id, dto, CurrentUserId ?? Guid.Empty, IsAdmin);
+            return order == null ? NotFound() : Ok(order);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
     }
 
     /// <summary>Assigner un livreur à une commande</summary>
@@ -143,15 +189,19 @@ public class OrdersController : ControllerBase
         return order == null ? NotFound() : Ok(order);
     }
 
-    /// <summary>Annuler une commande</summary>
+    /// <summary>Annuler une commande (le client concerné ou un Admin)</summary>
     [HttpPost("{id:guid}/cancel")]
     [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> Cancel(Guid id, [FromBody] string reason)
     {
         try
         {
-            var success = await _service.CancelAsync(id, reason);
+            var success = await _service.CancelAsync(id, reason, CurrentUserId ?? Guid.Empty, IsAdmin);
             return success ? NoContent() : NotFound();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : pas votre commande
         }
         catch (InvalidOperationException ex)
         {

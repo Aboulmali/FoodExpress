@@ -18,6 +18,10 @@ public class OrderServiceTests
 
     private static readonly Guid RestaurantId = Guid.Parse("bbbbbbbb-0000-0000-0000-000000000001");
     private static readonly Guid DishId = Guid.Parse("cccccccc-0000-0000-0000-000000000002");
+    private static readonly Guid OwnerId = Guid.Parse("dddddddd-0000-0000-0000-000000000001");
+    private static readonly Guid OtherOwnerId = Guid.Parse("dddddddd-0000-0000-0000-000000000099");
+    private static readonly Guid CustomerId = Guid.Parse("eeeeeeee-0000-0000-0000-000000000001");
+    private static readonly Guid OtherCustomerId = Guid.Parse("eeeeeeee-0000-0000-0000-000000000099");
 
     public OrderServiceTests()
     {
@@ -34,9 +38,15 @@ public class OrderServiceTests
         return new OrderDbContext(options);
     }
 
-    private void SetupRestaurant(bool isOpen = true) =>
+    private void SetupRestaurant(bool isOpen = true, Guid? ownerId = null) =>
         _client.Setup(c => c.GetRestaurantAsync(RestaurantId))
-               .ReturnsAsync(new RestaurantInfo { Id = RestaurantId, Name = "Pizza Roma", IsOpen = isOpen });
+               .ReturnsAsync(new RestaurantInfo
+               {
+                   Id = RestaurantId,
+                   Name = "Pizza Roma",
+                   IsOpen = isOpen,
+                   OwnerId = ownerId ?? OwnerId
+               });
 
     private void SetupDish(decimal price = 60m, bool available = true, Guid? restaurantId = null) =>
         _client.Setup(c => c.GetDishAsync(DishId))
@@ -51,7 +61,7 @@ public class OrderServiceTests
 
     private static CreateOrderDto SampleDto(int quantity = 2) => new()
     {
-        CustomerId = Guid.Parse("eeeeeeee-0000-0000-0000-000000000001"),
+        CustomerId = CustomerId,
         CustomerName = "Client Test",
         CustomerPhone = "0600000000",
         RestaurantId = RestaurantId,
@@ -70,7 +80,7 @@ public class OrderServiceTests
         var db = CreateDb(nameof(Create_Success_ComputesTotalsAndPublishesEvent));
 
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
-        var result = await service.CreateAsync(SampleDto(quantity: 2));
+        var result = await service.CreateAsync(SampleDto(quantity: 2), CustomerId);
 
         Assert.Equal("Pending", result.Status);
         Assert.Equal(120m, result.Subtotal);
@@ -89,7 +99,7 @@ public class OrderServiceTests
 
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
 
-        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.CreateAsync(SampleDto()));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.CreateAsync(SampleDto(), CustomerId));
         Assert.Empty(db.Orders);
         _eventBus.Verify(b => b.PublishAsync(It.IsAny<IntegrationEvent>()), Times.Never);
     }
@@ -103,7 +113,7 @@ public class OrderServiceTests
 
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto(), CustomerId));
         _eventBus.Verify(b => b.PublishAsync(It.IsAny<IntegrationEvent>()), Times.Never);
     }
 
@@ -116,7 +126,7 @@ public class OrderServiceTests
 
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto(), CustomerId));
         Assert.Empty(db.Orders);
     }
 
@@ -129,8 +139,24 @@ public class OrderServiceTests
 
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto()));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(SampleDto(), CustomerId));
         Assert.Empty(db.Orders);
+    }
+
+    [Fact]
+    public async Task Create_IgnoresCustomerIdFromBody_UsesCallerFromJwt()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(Create_IgnoresCustomerIdFromBody_UsesCallerFromJwt));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+
+        var dto = SampleDto();
+        dto.CustomerId = Guid.NewGuid(); // tentative d'usurpation via le body
+        var result = await service.CreateAsync(dto, CustomerId);
+
+        Assert.Equal(CustomerId, result.CustomerId);
+        Assert.Equal(CustomerId, db.Orders.Single().CustomerId);
     }
 
     [Fact]
@@ -139,7 +165,7 @@ public class OrderServiceTests
         var db = CreateDb(nameof(Cancel_UnknownOrder_ReturnsFalse));
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
 
-        var result = await service.CancelAsync(Guid.NewGuid(), "raison");
+        var result = await service.CancelAsync(Guid.NewGuid(), "raison", CustomerId, isAdmin: false);
 
         Assert.False(result);
         _eventBus.Verify(b => b.PublishAsync(It.IsAny<IntegrationEvent>()), Times.Never);
@@ -152,9 +178,9 @@ public class OrderServiceTests
         SetupDish();
         var db = CreateDb(nameof(Cancel_ExistingOrder_SetsStatusAndPublishesEvent));
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
-        var created = await service.CreateAsync(SampleDto());
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
 
-        var cancelled = await service.CancelAsync(created.Id, "Fini faim");
+        var cancelled = await service.CancelAsync(created.Id, "Fini faim", CustomerId, isAdmin: false);
 
         Assert.True(cancelled);
         var order = db.Orders.Single();
@@ -170,12 +196,12 @@ public class OrderServiceTests
         SetupDish();
         var db = CreateDb(nameof(Cancel_DeliveredOrder_Throws));
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
-        var created = await service.CreateAsync(SampleDto());
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
 
-        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered });
+        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered }, OwnerId, isAdmin: false);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            service.CancelAsync(created.Id, "raison"));
+            service.CancelAsync(created.Id, "raison", CustomerId, isAdmin: false));
     }
 
     [Fact]
@@ -185,9 +211,9 @@ public class OrderServiceTests
         SetupDish();
         var db = CreateDb(nameof(UpdateStatus_Delivered_PublishesBothEvents));
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
-        var created = await service.CreateAsync(SampleDto());
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
 
-        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered });
+        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered }, OwnerId, isAdmin: false);
 
         _eventBus.Verify(b => b.PublishAsync(It.Is<OrderStatusChangedEvent>(e => e.NewStatus == "Delivered")), Times.AtLeastOnce);
         _eventBus.Verify(b => b.PublishAsync(It.IsAny<OrderDeliveredEvent>()), Times.Once);
@@ -200,16 +226,97 @@ public class OrderServiceTests
         SetupDish();
         var db = CreateDb(nameof(GetByCustomer_ReturnsOnlyThatCustomersOrders));
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
-        var customerA = SampleDto();
 
-        await service.CreateAsync(customerA);
-        var other = SampleDto();
-        other.CustomerId = Guid.NewGuid();
-        await service.CreateAsync(other);
+        await service.CreateAsync(SampleDto(), CustomerId);
+        await service.CreateAsync(SampleDto(), OtherCustomerId);
 
-        var result = await service.GetByCustomerAsync(customerA.CustomerId);
+        var result = await service.GetByCustomerAsync(CustomerId);
 
         Assert.Single(result);
-        Assert.Equal(customerA.CustomerId, result[0].CustomerId);
+        Assert.Equal(CustomerId, result[0].CustomerId);
+    }
+
+    [Fact]
+    public async Task Add_Customer_Cannot_Update_Another_Owners_Order()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Add_Customer_Cannot_Update_Another_Owners_Order));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.UpdateStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted },
+                OtherOwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Add_Owner_Can_Update_Own_Order_Status()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Add_Owner_Can_Update_Own_Order_Status));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        var updated = await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted },
+            OwnerId, isAdmin: false);
+
+        Assert.Equal("Accepted", updated!.Status);
+    }
+
+    [Fact]
+    public async Task Add_GetByRestaurant_NotOwner_Throws()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Add_GetByRestaurant_NotOwner_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.GetByRestaurantAsync(RestaurantId, OtherOwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Add_GetByRestaurant_Owner_Succeeds()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Add_GetByRestaurant_Owner_Succeeds));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        await service.CreateAsync(SampleDto(), CustomerId);
+
+        var result = await service.GetByRestaurantAsync(RestaurantId, OwnerId, isAdmin: false);
+
+        Assert.Single(result);
+    }
+
+    [Fact]
+    public async Task Add_GetById_NotOwner_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(Add_GetById_NotOwner_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.GetByIdAsync(created.Id, OtherCustomerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Add_Cancel_NotOwner_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(Add_Cancel_NotOwner_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.CancelAsync(created.Id, "raison", OtherCustomerId, isAdmin: false));
     }
 }
