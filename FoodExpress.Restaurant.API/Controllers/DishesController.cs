@@ -1,4 +1,5 @@
-﻿using FoodExpress.Restaurant.API.DTOs;
+﻿using FoodExpress.Common.Auth;
+using FoodExpress.Restaurant.API.DTOs;
 using FoodExpress.Restaurant.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -34,7 +35,7 @@ public class DishesController : ControllerBase
 
     /// <summary>Créer un plat</summary>
     [HttpPost]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateDishDto dto)
     {
         try
@@ -50,7 +51,7 @@ public class DishesController : ControllerBase
 
     /// <summary>Modifier un plat</summary>
     [HttpPut("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateDishDto dto)
     {
         var dish = await _service.UpdateAsync(id, dto);
@@ -59,7 +60,7 @@ public class DishesController : ControllerBase
 
     /// <summary>Supprimer un plat</summary>
     [HttpDelete("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
         var deleted = await _service.DeleteAsync(id);
@@ -68,7 +69,7 @@ public class DishesController : ControllerBase
 
     /// <summary>Uploader l'image d'un plat</summary>
     [HttpPost("{id:guid}/image")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UploadImage(Guid id, IFormFile file)
     {
         if (file == null || file.Length == 0)

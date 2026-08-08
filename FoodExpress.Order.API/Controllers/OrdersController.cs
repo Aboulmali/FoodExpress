@@ -1,3 +1,4 @@
+using FoodExpress.Common.Auth;
 using FoodExpress.Order.API.DTOs;
 using FoodExpress.Order.API.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -18,7 +19,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Créer une nouvelle commande</summary>
     [HttpPost]
-    [Authorize]
+    [Authorize(Policy = Policies.CustomerOnly)]
     public async Task<IActionResult> Create([FromBody] CreateOrderDto dto)
     {
         try
@@ -38,7 +39,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Récupérer une commande par ID</summary>
     [HttpGet("{id:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> GetById(Guid id)
     {
         var order = await _service.GetByIdAsync(id);
@@ -47,7 +48,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Récupérer toutes les commandes</summary>
     [HttpGet]
-    [Authorize]
+    [Authorize(Policy = Policies.AdminOnly)]
     public async Task<IActionResult> GetAll()
     {
         var orders = await _service.GetAllAsync();
@@ -56,7 +57,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Récupérer les commandes d'un client</summary>
     [HttpGet("customer/{customerId:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> GetByCustomer(Guid customerId)
     {
         var orders = await _service.GetByCustomerAsync(customerId);
@@ -65,7 +66,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Récupérer les commandes d'un restaurant</summary>
     [HttpGet("restaurant/{restaurantId:guid}")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> GetByRestaurant(Guid restaurantId)
     {
         var orders = await _service.GetByRestaurantAsync(restaurantId);
@@ -74,7 +75,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Mettre à jour le statut d'une commande</summary>
     [HttpPut("{id:guid}/status")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateOrderStatusDto dto)
     {
         var order = await _service.UpdateStatusAsync(id, dto);
@@ -83,7 +84,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Assigner un livreur à une commande</summary>
     [HttpPost("{id:guid}/assign-delivery")]
-    [Authorize]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> AssignDelivery(Guid id, [FromBody] AssignDeliveryDto dto)
     {
         var order = await _service.AssignDeliveryAsync(id, dto);
@@ -92,7 +93,7 @@ public class OrdersController : ControllerBase
 
     /// <summary>Annuler une commande</summary>
     [HttpPost("{id:guid}/cancel")]
-    [Authorize]
+    [Authorize(Policy = Policies.CustomerOrAdmin)]
     public async Task<IActionResult> Cancel(Guid id, [FromBody] string reason)
     {
         try

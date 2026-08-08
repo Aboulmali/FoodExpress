@@ -1,12 +1,11 @@
+using FoodExpress.Common.Auth;
 using FoodExpress.Common.HealthChecks;
 using FoodExpress.EventBus;
 using FoodExpress.EventBus.Abstractions;
 using FoodExpress.Order.API.Data;
 using FoodExpress.Order.API.Services;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi;
 using Serilog;
 using Serilog.Sinks.Elasticsearch;
@@ -66,24 +65,8 @@ builder.Services.AddHealthChecks()
         builder.Configuration["RabbitMQ:Password"]!), tags: new[] { "queue" })
     .AddCheck("Elasticsearch", new ElasticsearchHealthCheck("http://localhost:9200"), tags: new[] { "logs" });
 
-// ==================== JWT (Keycloak) ====================
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.Authority = builder.Configuration["Keycloak:Authority"];
-        options.RequireHttpsMetadata = false;
-        options.Audience = builder.Configuration["Keycloak:Audience"];
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = false,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = builder.Configuration["Keycloak:Authority"]
-        };
-    });
-
-builder.Services.AddAuthorization();
+// ==================== JWT (Keycloak) + RBAC ====================
+builder.Services.AddFoodExpressKeycloakAuth(builder.Configuration);
 
 // ==================== CORS ====================
 builder.Services.AddCors(options =>
