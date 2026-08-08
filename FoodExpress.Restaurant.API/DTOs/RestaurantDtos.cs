@@ -16,6 +16,7 @@ public class RestaurantDto
     public string OpeningTime { get; set; } = string.Empty;
     public string ClosingTime { get; set; } = string.Empty;
     public double Rating { get; set; }
+    public Guid OwnerId { get; set; }
     public bool IsActive { get; set; }
     public bool IsOpen { get; set; }
     public int DishesCount { get; set; }
