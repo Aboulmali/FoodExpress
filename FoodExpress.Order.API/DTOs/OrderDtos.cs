@@ -18,7 +18,17 @@ public class OrderDto
     public string Status { get; set; } = string.Empty;
     public string? Notes { get; set; }
     public DateTime CreatedAt { get; set; }
+    public DeliveryPersonDto? Delivery { get; set; }
     public List<OrderItemDto> Items { get; set; } = new();
+}
+
+public class DeliveryPersonDto
+{
+    public Guid DeliveryPersonId { get; set; }
+    public string DeliveryPersonName { get; set; } = string.Empty;
+    public string DeliveryPersonPhone { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public DateTime? AssignedAt { get; set; }
 }
 
 public class OrderItemDto

@@ -83,6 +83,44 @@ public class UserService : IUserService
         return users.Select(MapToDto).ToList();
     }
 
+    // Liste des livreurs (pour que les restaurateurs puissent assigner une livraison)
+    public async Task<List<UserDto>> GetDeliveryPersonsAsync()
+    {
+        var users = await _db.Users
+            .Where(u => u.Role == UserRole.DeliveryPerson && u.IsActive)
+            .OrderBy(u => u.LastName)
+            .ThenBy(u => u.FirstName)
+            .ToListAsync();
+        return users.Select(MapToDto).ToList();
+    }
+
+    // Changer le rôle d'un utilisateur : Keycloak d'abord, puis BDD, toujours synchronisés
+    public async Task<UserDto> UpdateRoleAsync(Guid userId, UserRole role)
+    {
+        var user = await _db.Users.FindAsync(userId)
+            ?? throw new KeyNotFoundException("Utilisateur introuvable");
+
+        if (user.Role == role)
+            return MapToDto(user);
+
+        // Retirer tous les mappings actuels puis assigner le nouveau rôle
+        foreach (var oldRole in Enum.GetValues<UserRole>())
+        {
+            if (user.Role == oldRole)
+                await _keycloak.RemoveRoleAsync(user.KeycloakId, oldRole.ToString());
+        }
+
+        await _keycloak.AssignRoleAsync(user.KeycloakId, role.ToString());
+
+        user.Role = role;
+        user.UpdatedAt = DateTime.UtcNow;
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation("Role updated: {Email} -> {Role}", user.Email, role);
+
+        return MapToDto(user);
+    }
+
     public async Task<AddressDto> AddAddressAsync(Guid userId, CreateAddressDto dto)
     {
         var user = await _db.Users.FindAsync(userId)

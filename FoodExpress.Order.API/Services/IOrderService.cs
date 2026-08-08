@@ -12,6 +12,6 @@ public interface IOrderService
     Task<List<OrderDto>> GetAllAsync();
     Task<OrderDto?> UpdateStatusAsync(Guid id, UpdateOrderStatusDto dto, Guid callerId, bool isAdmin);
     Task<OrderDto?> UpdateDeliveryStatusAsync(Guid id, UpdateOrderStatusDto dto, Guid? callerId, bool isAdmin);
-    Task<OrderDto?> AssignDeliveryAsync(Guid orderId, AssignDeliveryDto dto);
+    Task<OrderDto?> AssignDeliveryAsync(Guid orderId, AssignDeliveryDto dto, Guid callerId, bool isAdmin);
     Task<bool> CancelAsync(Guid id, string reason, Guid callerId, bool isAdmin);
 }

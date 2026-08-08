@@ -22,6 +22,10 @@ public static class Policies
     public const string CustomerOrAdmin = "CustomerOrAdmin";
     public const string RestaurantAdmin = "RestaurantAdmin";
     public const string DeliveryOrAdmin = "DeliveryOrAdmin";
+
+    // Tout utilisateur authentifié : la logique d'autorisation se fait au niveau du service
+    // (ex. annulation : client de la commande, owner du restaurant ou admin)
+    public const string AnyAuthenticated = "AnyAuthenticated";
 }
 
 public static class FoodExpressAuthExtensions
@@ -57,6 +61,7 @@ public static class FoodExpressAuthExtensions
             options.AddPolicy(Policies.CustomerOrAdmin, p => p.RequireRole(Roles.Customer, Roles.Admin));
             options.AddPolicy(Policies.RestaurantAdmin, p => p.RequireRole(Roles.RestaurantOwner, Roles.Admin));
             options.AddPolicy(Policies.DeliveryOrAdmin, p => p.RequireRole(Roles.DeliveryPerson, Roles.Admin));
+            options.AddPolicy(Policies.AnyAuthenticated, p => p.RequireAuthenticatedUser());
         });
 
         return services;

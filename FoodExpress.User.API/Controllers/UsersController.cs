@@ -41,6 +41,35 @@ public class UsersController : ControllerBase
     }
 
     /// <summary>
+    /// Liste des livreurs (restaurateurs et admins : assignation de livraison)
+    /// </summary>
+    [HttpGet("delivery")]
+    [Authorize(Policy = Policies.RestaurantAdmin)]
+    public async Task<IActionResult> GetDeliveryPersons()
+    {
+        var couriers = await _userService.GetDeliveryPersonsAsync();
+        return Ok(couriers);
+    }
+
+    /// <summary>
+    /// Changer le rôle d'un utilisateur (Admin uniquement ; synchronisé avec Keycloak)
+    /// </summary>
+    [HttpPut("{id:guid}/role")]
+    [Authorize(Policy = Policies.AdminOnly)]
+    public async Task<IActionResult> UpdateRole(Guid id, [FromBody] UpdateUserRoleDto dto)
+    {
+        try
+        {
+            var user = await _userService.UpdateRoleAsync(id, dto.Role);
+            return Ok(user);
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+    }
+
+    /// <summary>
     /// Récupérer les adresses d'un utilisateur
     /// </summary>
     [HttpGet("{id:guid}/addresses")]

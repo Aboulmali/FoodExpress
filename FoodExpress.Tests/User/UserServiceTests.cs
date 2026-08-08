@@ -202,4 +202,65 @@ public class UserServiceTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             service.AddAddressAsync(Guid.NewGuid(), new CreateAddressDto { Street = "Casablanca" }));
     }
+
+    [Fact]
+    public async Task GetDeliveryPersons_ReturnsOnlyActiveDeliveryRoles()
+    {
+        var db = CreateDb(nameof(GetDeliveryPersons_ReturnsOnlyActiveDeliveryRoles));
+        db.Users.AddRange(
+            new AppUser { Id = Guid.NewGuid(), Email = "livreur1@test.com", FirstName = "L1", LastName = "A", Role = UserRole.DeliveryPerson },
+            new AppUser { Id = Guid.NewGuid(), Email = "livreur2@test.com", FirstName = "L2", LastName = "B", Role = UserRole.DeliveryPerson, IsActive = false },
+            new AppUser { Id = Guid.NewGuid(), Email = "client@test.com", FirstName = "C", LastName = "D", Role = UserRole.Customer });
+        await db.SaveChangesAsync();
+
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+        var result = await service.GetDeliveryPersonsAsync();
+
+        var courier = Assert.Single(result);
+        Assert.Equal("livreur1@test.com", courier.Email);
+    }
+
+    [Fact]
+    public async Task UpdateRole_SameRole_DoesNotCallKeycloak()
+    {
+        var db = CreateDb(nameof(UpdateRole_SameRole_DoesNotCallKeycloak));
+        var id = Guid.NewGuid();
+        db.Users.Add(new AppUser { Id = id, KeycloakId = "k1", Email = "a@b.com", FirstName = "A", LastName = "B", Role = UserRole.Customer });
+        await db.SaveChangesAsync();
+
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+        var result = await service.UpdateRoleAsync(id, UserRole.Customer);
+
+        Assert.Equal(UserRole.Customer, result.Role);
+        _keycloak.Verify(k => k.AssignRoleAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        _keycloak.Verify(k => k.RemoveRoleAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task UpdateRole_ChangesRole_KeycloakAndDbAligned()
+    {
+        var db = CreateDb(nameof(UpdateRole_ChangesRole_KeycloakAndDbAligned));
+        var id = Guid.NewGuid();
+        db.Users.Add(new AppUser { Id = id, KeycloakId = "k1", Email = "a@b.com", FirstName = "A", LastName = "B", Role = UserRole.Customer });
+        await db.SaveChangesAsync();
+
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+        var result = await service.UpdateRoleAsync(id, UserRole.DeliveryPerson);
+
+        Assert.Equal(UserRole.DeliveryPerson, result.Role);
+        Assert.Equal(UserRole.DeliveryPerson, db.Users.Single().Role);
+        _keycloak.Verify(k => k.RemoveRoleAsync("k1", UserRole.Customer.ToString()), Times.Once);
+        _keycloak.Verify(k => k.AssignRoleAsync("k1", UserRole.DeliveryPerson.ToString()), Times.Once);
+    }
+
+    [Fact]
+    public async Task UpdateRole_UnknownUser_Throws()
+    {
+        var db = CreateDb(nameof(UpdateRole_UnknownUser_Throws));
+        var service = new UserService(db, _keycloak.Object, _logger.Object);
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.UpdateRoleAsync(Guid.NewGuid(), UserRole.Admin));
+        _keycloak.Verify(k => k.AssignRoleAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+    }
 }

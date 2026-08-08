@@ -180,18 +180,33 @@ public class OrdersController : ControllerBase
         }
     }
 
-    /// <summary>Assigner un livreur à une commande</summary>
+    /// <summary>Assigner un livreur à une commande prête (le propriétaire du restaurant ou un Admin)</summary>
     [HttpPost("{id:guid}/assign-delivery")]
     [Authorize(Policy = Policies.RestaurantAdmin)]
     public async Task<IActionResult> AssignDelivery(Guid id, [FromBody] AssignDeliveryDto dto)
     {
-        var order = await _service.AssignDeliveryAsync(id, dto);
-        return order == null ? NotFound() : Ok(order);
+        try
+        {
+            var order = await _service.AssignDeliveryAsync(id, dto, CurrentUserId ?? Guid.Empty, IsAdmin);
+            return order == null ? NotFound() : Ok(order);
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Forbid(); // 403 : commande d'un autre restaurant
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
-    /// <summary>Annuler une commande (le client concerné ou un Admin)</summary>
+    /// <summary>Annuler une commande (le client concerné, le propriétaire du restaurant ou un Admin)</summary>
     [HttpPost("{id:guid}/cancel")]
-    [Authorize(Policy = Policies.CustomerOrAdmin)]
+    [Authorize(Policy = Policies.AnyAuthenticated)]
     public async Task<IActionResult> Cancel(Guid id, [FromBody] string reason)
     {
         try
@@ -202,6 +217,10 @@ public class OrdersController : ControllerBase
         catch (UnauthorizedAccessException)
         {
             return Forbid(); // 403 : pas votre commande
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {

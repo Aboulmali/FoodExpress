@@ -189,7 +189,15 @@ public class OrderService : IOrderService
 
             if (restaurant.OwnerId != callerId)
                 throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
+
+            // Un restaurateur gère la préparation (jusqu'à Ready) ; OnDelivery/Delivered
+            // sont réservés au livreur et à l'admin.
+            if (dto.NewStatus is OrderStatus.OnDelivery or OrderStatus.Delivered)
+                throw new InvalidOperationException(
+                    "Un restaurateur ne peut pas marquer une commande comme livrée : cela relève du livreur");
         }
+
+        ValidateTransition(order.Status, dto.NewStatus);
 
         var previousStatus = order.Status;
         order.Status = dto.NewStatus;
@@ -268,8 +276,13 @@ public class OrderService : IOrderService
         if (!isAdmin && (order.Delivery == null || order.Delivery.DeliveryPersonId != callerId))
             throw new UnauthorizedAccessException("Cette commande ne vous est pas assignée");
 
-        if (dto.NewStatus is not (OrderStatus.OnDelivery or OrderStatus.Delivered))
-            throw new InvalidOperationException("Un livreur ne peut passer une commande qu'en OnDelivery ou Delivered");
+        // Machine à états du livreur : Ready → OnDelivery → Delivered (aucun saut ni retour)
+        if (dto.NewStatus == OrderStatus.OnDelivery && order.Status != OrderStatus.Ready)
+            throw new InvalidOperationException(
+                "Un livreur ne peut démarrer la livraison que d'une commande prête (Ready)");
+        if (dto.NewStatus == OrderStatus.Delivered && order.Status != OrderStatus.OnDelivery)
+            throw new InvalidOperationException(
+                "Un livreur ne peut marquer livrée qu'une commande en cours de livraison (OnDelivery)");
 
         var previousStatus = order.Status;
         order.Status = dto.NewStatus;
@@ -323,7 +336,7 @@ public class OrderService : IOrderService
         return MapToDto(order);
     }
 
-    public async Task<OrderDto?> AssignDeliveryAsync(Guid orderId, AssignDeliveryDto dto)
+    public async Task<OrderDto?> AssignDeliveryAsync(Guid orderId, AssignDeliveryDto dto, Guid callerId, bool isAdmin)
     {
         var order = await _db.Orders
             .Include(o => o.Items)
@@ -331,6 +344,21 @@ public class OrderService : IOrderService
             .FirstOrDefaultAsync(o => o.Id == orderId);
 
         if (order == null) return null;
+
+        // Sécurité : seul le propriétaire du restaurant (ou un admin) assigne un livreur
+        if (!isAdmin)
+        {
+            var restaurant = await _restaurantApi.GetRestaurantAsync(order.RestaurantId)
+                ?? throw new KeyNotFoundException("Restaurant introuvable");
+
+            if (restaurant.OwnerId != callerId)
+                throw new UnauthorizedAccessException("Ce restaurant ne vous appartient pas");
+        }
+
+        // Règle métier : on n'assigne un livreur qu'à une commande prête (Ready)
+        if (order.Status != OrderStatus.Ready)
+            throw new InvalidOperationException(
+                "Un livreur ne peut être assigné qu'à une commande prête (Ready)");
 
         var delivery = order.Delivery;
         if (delivery == null || _db.Entry(delivery).State == EntityState.Detached)
@@ -364,12 +392,32 @@ public class OrderService : IOrderService
             .FirstOrDefaultAsync(o => o.Id == id);
         if (order == null) return false;
 
-        // Sécurité : un client ne peut annuler QUE ses propres commandes.
-        if (!isAdmin && order.CustomerId != callerId)
-            throw new UnauthorizedAccessException("Vous ne pouvez annuler que vos propres commandes");
+        if (order.Status == OrderStatus.Cancelled)
+            throw new InvalidOperationException("Commande déjà annulée");
 
         if (order.Status == OrderStatus.Delivered)
             throw new InvalidOperationException("Impossible d'annuler une commande livrée");
+
+        if (!isAdmin)
+        {
+            if (order.CustomerId == callerId)
+            {
+                // Le client ne peut annuler que tant que le restaurant n'a pas commencé la préparation
+                if (order.Status is not (OrderStatus.Pending or OrderStatus.Accepted))
+                    throw new InvalidOperationException(
+                        "Impossible d'annuler : la commande a déjà été traitée par le restaurant");
+            }
+            else
+            {
+                // Le propriétaire du restaurant peut annuler ses propres commandes (avant livraison)
+                var restaurant = await _restaurantApi.GetRestaurantAsync(order.RestaurantId)
+                    ?? throw new KeyNotFoundException("Restaurant introuvable");
+
+                if (restaurant.OwnerId != callerId)
+                    throw new UnauthorizedAccessException(
+                        "Vous ne pouvez annuler que vos propres commandes ou celles de votre restaurant");
+            }
+        }
 
         order.Status = OrderStatus.Cancelled;
         order.CancelledAt = DateTime.UtcNow;
@@ -393,6 +441,19 @@ public class OrderService : IOrderService
         });
 
         return true;
+    }
+
+    // Machine à états : une commande avance d'un cran à la fois, jamais en arrière ni en saut.
+    // Pending(0) → Accepted(1) → Preparing(2) → Ready(3) → OnDelivery(4) → Delivered(5).
+    // Cancelled(6) n'est atteignable que via CancelAsync.
+    private static void ValidateTransition(OrderStatus from, OrderStatus to)
+    {
+        if (to == OrderStatus.Cancelled)
+            throw new InvalidOperationException("Annulation interdite : utilisez l'endpoint d'annulation");
+
+        if (to != (OrderStatus)((int)from + 1))
+            throw new InvalidOperationException(
+                $"Transition de statut invalide : {from} → {to} (une seule étape à la fois, dans l'ordre)");
     }
 
     // Générer un numéro de commande unique : ORD-YYYYMMDD-XXXX
@@ -419,6 +480,14 @@ public class OrderService : IOrderService
         Status = o.Status.ToString(),
         Notes = o.Notes,
         CreatedAt = o.CreatedAt,
+        Delivery = o.Delivery == null ? null : new DeliveryPersonDto
+        {
+            DeliveryPersonId = o.Delivery.DeliveryPersonId ?? Guid.Empty,
+            DeliveryPersonName = o.Delivery.DeliveryPersonName,
+            DeliveryPersonPhone = o.Delivery.DeliveryPersonPhone,
+            Status = o.Delivery.Status.ToString(),
+            AssignedAt = o.Delivery.AssignedAt
+        },
         Items = o.Items.Select(i => new OrderItemDto
         {
             Id = i.Id,

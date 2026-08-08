@@ -106,6 +106,30 @@ public class KeycloakService : IKeycloakService
         assignResponse.EnsureSuccessStatusCode();
     }
 
+    // Retirer un rôle à un utilisateur (mapping realm)
+    public async Task RemoveRoleAsync(string userId, string roleName)
+    {
+        var adminToken = await GetAdminTokenAsync();
+        _httpClient.DefaultRequestHeaders.Authorization =
+            new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", adminToken);
+
+        // Récupérer le rôle
+        var roleResponse = await _httpClient.GetAsync(
+            $"http://localhost:8080/admin/realms/foodexpress/roles/{roleName}");
+        roleResponse.EnsureSuccessStatusCode();
+        var roleJson = await roleResponse.Content.ReadAsStringAsync();
+
+        // Retirer le mapping (idempotent : 204 même si absent)
+        var request = new HttpRequestMessage(HttpMethod.Delete,
+            $"http://localhost:8080/admin/realms/foodexpress/users/{userId}/role-mappings/realm")
+        {
+            Content = new StringContent($"[{roleJson}]", Encoding.UTF8, "application/json")
+        };
+
+        var deleteResponse = await _httpClient.SendAsync(request);
+        deleteResponse.EnsureSuccessStatusCode();
+    }
+
     // Login : obtenir un token
     public async Task<TokenResponseDto> LoginAsync(string email, string password)
     {

@@ -22,6 +22,31 @@ public class OrderServiceTests
     private static readonly Guid OtherOwnerId = Guid.Parse("dddddddd-0000-0000-0000-000000000099");
     private static readonly Guid CustomerId = Guid.Parse("eeeeeeee-0000-0000-0000-000000000001");
     private static readonly Guid OtherCustomerId = Guid.Parse("eeeeeeee-0000-0000-0000-000000000099");
+    private static readonly Guid CourierId = Guid.Parse("aaaaaaaa-0000-0000-0000-000000000007");
+
+    // Parcours complet de la machine à états : Pending → Accepted → Preparing → Ready
+    // puis OnDelivery → Delivered (par le livreur), avec assignation au passage.
+    private static async Task DriveOrderToDeliveredAsync(OrderService service, Guid orderId, Guid ownerId, Guid courierId)
+    {
+        await service.UpdateStatusAsync(orderId,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, ownerId, isAdmin: false);
+        await service.UpdateStatusAsync(orderId,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, ownerId, isAdmin: false);
+        await service.UpdateStatusAsync(orderId,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, ownerId, isAdmin: false);
+
+        await service.AssignDeliveryAsync(orderId, new AssignDeliveryDto
+        {
+            DeliveryPersonId = courierId,
+            DeliveryPersonName = "Livreur Test",
+            DeliveryPersonPhone = "0611111111"
+        }, ownerId, isAdmin: false);
+
+        await service.UpdateDeliveryStatusAsync(orderId,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.OnDelivery }, courierId, isAdmin: false);
+        await service.UpdateDeliveryStatusAsync(orderId,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered }, courierId, isAdmin: false);
+    }
 
     public OrderServiceTests()
     {
@@ -198,7 +223,7 @@ public class OrderServiceTests
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
         var created = await service.CreateAsync(SampleDto(), CustomerId);
 
-        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered }, OwnerId, isAdmin: false);
+        await DriveOrderToDeliveredAsync(service, created.Id, OwnerId, CourierId);
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.CancelAsync(created.Id, "raison", CustomerId, isAdmin: false));
@@ -213,7 +238,7 @@ public class OrderServiceTests
         var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
         var created = await service.CreateAsync(SampleDto(), CustomerId);
 
-        await service.UpdateStatusAsync(created.Id, new UpdateOrderStatusDto { NewStatus = OrderStatus.Delivered }, OwnerId, isAdmin: false);
+        await DriveOrderToDeliveredAsync(service, created.Id, OwnerId, CourierId);
 
         _eventBus.Verify(b => b.PublishAsync(It.Is<OrderStatusChangedEvent>(e => e.NewStatus == "Delivered")), Times.AtLeastOnce);
         _eventBus.Verify(b => b.PublishAsync(It.IsAny<OrderDeliveredEvent>()), Times.Once);
@@ -318,5 +343,222 @@ public class OrderServiceTests
 
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.CancelAsync(created.Id, "raison", OtherCustomerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_SkipsStep_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(UpdateStatus_SkipsStep_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, OwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_Backwards_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(UpdateStatus_Backwards_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.Pending }, OwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_Cancelled_Throws_EndpointDedicated()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(UpdateStatus_Cancelled_Throws_EndpointDedicated));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.Cancelled }, OwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task UpdateStatus_OwnerCannotSetDelivered_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(UpdateStatus_OwnerCannotSetDelivered_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.OnDelivery }, OwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task AssignDelivery_NotReady_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(AssignDelivery_NotReady_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.AssignDeliveryAsync(created.Id, new AssignDeliveryDto
+            {
+                DeliveryPersonId = CourierId,
+                DeliveryPersonName = "Livreur Test",
+                DeliveryPersonPhone = "0611111111"
+            }, OwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task AssignDelivery_OtherOwner_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(AssignDelivery_OtherOwner_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, OwnerId, isAdmin: false);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.AssignDeliveryAsync(created.Id, new AssignDeliveryDto
+            {
+                DeliveryPersonId = CourierId,
+                DeliveryPersonName = "Livreur Test",
+                DeliveryPersonPhone = "0611111111"
+            }, OtherOwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task AssignDelivery_Success_SetsDeliveryInfo()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(AssignDelivery_Success_SetsDeliveryInfo));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, OwnerId, isAdmin: false);
+
+        var assigned = await service.AssignDeliveryAsync(created.Id, new AssignDeliveryDto
+        {
+            DeliveryPersonId = CourierId,
+            DeliveryPersonName = "Livreur Test",
+            DeliveryPersonPhone = "0611111111"
+        }, OwnerId, isAdmin: false);
+
+        Assert.Equal(CourierId, assigned!.Delivery!.DeliveryPersonId);
+    }
+
+    [Fact]
+    public async Task UpdateDelivery_UnassignedCourier_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(UpdateDelivery_UnassignedCourier_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, OwnerId, isAdmin: false);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.UpdateDeliveryStatusAsync(created.Id,
+                new UpdateOrderStatusDto { NewStatus = OrderStatus.OnDelivery }, CourierId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Cancel_Owner_OwnRestaurant_Succeeds()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Cancel_Owner_OwnRestaurant_Succeeds));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        var cancelled = await service.CancelAsync(created.Id, "Plus de stock", OwnerId, isAdmin: false);
+
+        Assert.True(cancelled);
+        Assert.Equal(OrderStatus.Cancelled, db.Orders.Single().Status);
+    }
+
+    [Fact]
+    public async Task Cancel_Owner_OtherRestaurant_Throws()
+    {
+        SetupRestaurant(ownerId: OwnerId);
+        SetupDish();
+        var db = CreateDb(nameof(Cancel_Owner_OtherRestaurant_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.CancelAsync(created.Id, "raison", OtherOwnerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Cancel_Client_AfterPreparation_Throws()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(Cancel_Client_AfterPreparation_Throws));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, OwnerId, isAdmin: false);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CancelAsync(created.Id, "raison", CustomerId, isAdmin: false));
+    }
+
+    [Fact]
+    public async Task Cancel_Admin_MidProcess_Succeeds()
+    {
+        SetupRestaurant();
+        SetupDish();
+        var db = CreateDb(nameof(Cancel_Admin_MidProcess_Succeeds));
+        var service = new OrderService(db, _client.Object, _eventBus.Object, _logger.Object);
+        var created = await service.CreateAsync(SampleDto(), CustomerId);
+
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Accepted }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Preparing }, OwnerId, isAdmin: false);
+        await service.UpdateStatusAsync(created.Id,
+            new UpdateOrderStatusDto { NewStatus = OrderStatus.Ready }, OwnerId, isAdmin: false);
+
+        var cancelled = await service.CancelAsync(created.Id, "raison admin", Guid.Empty, isAdmin: true);
+
+        Assert.True(cancelled);
+        Assert.Equal(OrderStatus.Cancelled, db.Orders.Single().Status);
     }
 }
