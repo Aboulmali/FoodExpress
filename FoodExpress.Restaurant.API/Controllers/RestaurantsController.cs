@@ -71,7 +71,7 @@ public class RestaurantsController : ControllerBase
             var restaurant = await _service.UpdateAsync(id, dto, ownerId.Value);
             return restaurant == null ? NotFound() : Ok(restaurant);
         }
-        catch (UnauthorizedAccessException ex)
+        catch (UnauthorizedAccessException)
         {
             return Forbid(); // 403 : pas votre restaurant
         }
