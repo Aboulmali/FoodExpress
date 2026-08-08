@@ -597,8 +597,8 @@
     "credentials" : [ {
       "id" : "49766244-34ad-465f-88e0-ac60bd93a61b",
       "type" : "password",
-      "createdDate" : 1785790639879,
-      "secretData" : "{\"value\":\"Y5611VB7/9pWlQzOvb7OQkLuiaJpSpKYUGkCVVBgNGIkqUpvmk6MKho3TdmdaiZsAyEI6qdteHc3QeGhUMc9Tw==\",\"salt\":\"h3tjVxZvF/nNq2uKNCzXtQ==\",\"additionalParameters\":{}}",
+      "createdDate" : 1786162783622,
+      "secretData" : "{\"value\":\"vYCDEt+qX3CoUgwFeKWjPHW2sdXlLxZyM6T5xZzsELlNJGMzqPQauphGM/vTsDdo5lo+fMz47ZlsaHOFrZb8cg==\",\"salt\":\"Osrm3vUWK+XYzyVZA1ByYw==\",\"additionalParameters\":{}}",
       "credentialData" : "{\"hashIterations\":210000,\"algorithm\":\"pbkdf2-sha512\",\"additionalParameters\":{}}"
     } ],
     "disableableCredentialTypes" : [ ],
